@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>OpenGL Screen Space to View Space | 顧晴 | Qing Gu</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="What I thought about the process of recovering the positions in view space from screen space was wrong I’m working on my raytracer recently. In order to use the same camera system I use in rasterizing">
+<meta name="keywords" content="opengl">
+<meta property="og:type" content="article">
+<meta property="og:title" content="OpenGL Screen Space to View Space">
+<meta property="og:url" content="http://tsing-gu.com/blog/2015/09/15/XYZ-TO-EYE/index.html">
+<meta property="og:site_name" content="顧晴 | Qing Gu">
+<meta property="og:description" content="What I thought about the process of recovering the positions in view space from screen space was wrong I’m working on my raytracer recently. In order to use the same camera system I use in rasterizing">
+<meta property="og:locale" content="English, Chinese">
+<meta property="og:updated_time" content="2017-10-01T00:47:47.363Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="OpenGL Screen Space to View Space">
+<meta name="twitter:description" content="What I thought about the process of recovering the positions in view space from screen space was wrong I’m working on my raytracer recently. In order to use the same camera system I use in rasterizing">
+  
+    <link rel="alternate" href="/blog/atom.xml" title="顧晴 | Qing Gu" type="application/atom+xml">
+  
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" integrity="sha384-XdYbMnZ/QjLh6iI4ogqCTaIjrFk87ip+ekIjefZch0Y+PvJ8CDYtEs1ipDmPorQ+" crossorigin="anonymous">
+
+  <link rel="stylesheet" href="/blog/css/styles.css">
+  
+
+</head>
+
+<body>
+  <nav class="navbar navbar-inverse">
+  <div class="container">
+    <!-- Brand and toggle get grouped for better mobile display -->
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-menu-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      
+    </div>
+
+    <!-- Collect the nav links, forms, and other content for toggling -->
+    <div class="collapse navbar-collapse" id="main-menu-navbar">
+      <ul class="nav navbar-nav">
+        
+          <li><a class=""
+                 href="/blog/index.html">Home</a></li>
+        
+          <li><a class=""
+                 href="/blog/archives/">Archives</a></li>
+        
+      </ul>
+
+      <!--
+      <ul class="nav navbar-nav navbar-right">
+        
+          <li><a href="/atom.xml" title="RSS Feed"><i class="fa fa-rss"></i></a></li>
+        
+      </ul>
+      -->
+    </div><!-- /.navbar-collapse -->
+  </div><!-- /.container-fluid -->
+</nav>
+
+  <div class="container">
+    <div class="blog-header">
+  <h1 class="blog-title">顧晴 | Qing Gu</h1>
+  
+    <p class="lead blog-description">Computer Graphics and others</p>
+  
+</div>
+
+    <div class="row">
+        <div class="col-sm-8 blog-main">
+          <article id="post-XYZ-TO-EYE" class="article article-type-post" itemscope itemprop="blogPost">
+
+  <header class="article-header">
+    
+  
+    <h1 class="article-title" itemprop="name">
+      OpenGL Screen Space to View Space
+    </h1>
+  
+
+
+  </header>
+
+  <div class="article-meta">
+    <div class="article-datetime">
+  <a href="/blog/2015/09/15/XYZ-TO-EYE/" class="article-date"><time datetime="2015-09-15T14:22:44.000Z" itemprop="datePublished">2015-09-15</time></a>
+</div>
+
+    
+    
+  <div class="article-category">
+    <a class="article-category-link" href="/blog/categories/tech/">tech</a>
+  </div>
+
+
+  </div>
+  <div class="article-inner">
+
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p><em>What I thought about the process of recovering the positions in view space from screen space was wrong</em></p>
+<p>I’m working on my raytracer recently. In order to use the same camera system I use in rasterizing, it is desirable to transform rays in screen space to world space. <a href="https://www.opengl.org/wiki/Compute_eye_space_from_window_space" target="_blank" rel="external">This wiki</a> on opengl.org states the way to recover position from screen space. </p>
+<p>However, after reading the wiki, I was a little bit confused about the process and tried to figure it out myself from projection matrix. </p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div><div class="line">8</div><div class="line">9</div></pre></td><td class="code"><pre><div class="line">+-----------+ Projection +--------+ Divided</div><div class="line">| Camera    | Matrix     |Clip    | by w   </div><div class="line">| Space     +------------+Space   +-------+</div><div class="line">+-----------+            +--------+       |</div><div class="line">                                          |</div><div class="line">+----------+ Viewport        +------+     |</div><div class="line">| Screen   | Transformation  | NDC  |     |</div><div class="line">| Space    +-----------------+      +-----+</div><div class="line">+----------+                 +------+</div></pre></td></tr></table></figure>
+<p>The figure above illustrates the OpenGL transformation pipeline. Obviously, in order to recover camera space position, we need to first convert screen space to NDC (Normalized Device Space with $x,y,z \in [-1, 1]$), then multiply by $w$ in clip space. Finally, we can get the camera space by multiplying inverse of projection matrix. </p>
+<h2 id="Camera-Space-to-NDC"><a href="#Camera-Space-to-NDC" class="headerlink" title="Camera Space to NDC"></a>Camera Space to NDC</h2><p>Let’s first take a look at how we transform from <code>camera space</code> to <code>NDC</code><br><span>$$\begin{pmatrix}
+x_{clip}\\
+y_{clip}\\
+z_{clip}\\
+w_{clip}
+\end{pmatrix} =
+\begin{pmatrix}
+\frac{2n}{r-l} &amp; 0 &amp; \frac{r+l}{r-l} &amp; 0 \\ 
+0 &amp; \frac{2n}{t-b} &amp; \frac{t+b}{t-b} &amp; 0 \\ 
+0 &amp; 0 &amp; \frac{-(f+n)}{f-n} &amp; \frac{-2fn}{f-n} \\ 
+0 &amp; 0 &amp;  -1 &amp; 0
+\end{pmatrix}
+\begin{pmatrix}
+x_{view}\\
+y_{view}\\
+z_{view}\\
+w_{view}
+\end{pmatrix}$$</span><!-- Has MathJax --><br>Thus,<br><span>$$\left\{\begin{matrix}
+x_{clip}=\frac{2n}{r-l}x_{view} + \frac{r+l}{r-l}z_{view}\\
+y_{clip}=\frac{2n}{t-b}y_{view} + \frac{t+b}{t-b}z_{view}\\
+z_{clip}=\frac{-(f+n)}{f-n}z_{view} + \frac{-2fn}{f-n}w_{view}\\
+w_{clip}=-z_{view}
+\end{matrix}\right.$$</span><!-- Has MathJax --></p>
+<p>Then divide each element by $w_{view}$, we can get the NDC:</p>
+<span>$$\left\{\begin{matrix}
+x_{NDC} = x_{clip}/w_{clip}\\
+y_{NDC} = y_{clip}/w_{clip}\\
+z_{NDC} = \frac{f+n}{f-n}+\frac{2fn}{f-n}\cdot\frac{w_{view}}{z_{view}}
+\end{matrix}\right.$$</span><!-- Has MathJax -->
+<p>where <span>$w_{view}=1.0$</span><!-- Has MathJax --> and <span>$w_{clip} = -z_{view}$</span><!-- Has MathJax -->. </p>
+<h2 id="Screen-Space-to-NDC"><a href="#Screen-Space-to-NDC" class="headerlink" title="Screen Space to NDC"></a>Screen Space to NDC</h2><p>Generally speaking, in screen space <span>$x_s, y_s, z_s \in [0, 1]$</span><!-- Has MathJax -->. In order to transform it to NDC, we can simply apply<br><span>$(x_{NDC}, y_{NDC}, z_{NDC}) = 2\cdot(x_s, y_s, z_s)-(1, 1, 1)$</span><!-- Has MathJax --></p>
+<h2 id="NDC-to-Camera-Space"><a href="#NDC-to-Camera-Space" class="headerlink" title="NDC to Camera Space"></a>NDC to Camera Space</h2><p>Knowing <span>$(x_{NDC}, y_{NDC}, z_{NDC})$</span><!-- Has MathJax -->, we can get <span>$z_{view}$</span><!-- Has MathJax --> by plugin <span>$z_{NDC}$</span><!-- Has MathJax --> into<br><span>$z_{NDC} = \frac{f+n}{f-n}+\frac{2fn}{f-n}\cdot\frac{w_{view}}{z_{view}}$</span><!-- Has MathJax --></p>
+<span>$z_{view} = -w_{clip}= \frac{2fn}{f-n}/(z_{NDC}+(-\frac{f+n}{f-n}))$</span><!-- Has MathJax -->
+<p>Note that $2fn/(f-n)$ and $(f+n)/(f-n)$ are elements in projection matrix.<br>By mutiply each element in NDC, we can get <code>clip coordinate</code>.</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div></pre></td><td class="code"><pre><div class="line">clipPos.w = camMats.projMat[<span class="number">3</span>][<span class="number">2</span>] / ( ndcPos.z + camMats.projMat[<span class="number">2</span>][<span class="number">2</span>]);</div><div class="line"></div><div class="line">clipPos.xyz = ndcPos*clipPos.w;</div></pre></td></tr></table></figure>
+<p>Camera coordinate can be computed simply by multiplying clip coordinate with inverse of projection matrx.<br><figure class="highlight c"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">cameraPos = inverse(camMats.projMat) * clipPos;</div></pre></td></tr></table></figure></p>
+<p>This <a href="https://gist.github.com/v3c70r/21312f645a6ab6746cc1" target="_blank" rel="external">snippet</a> is the code I used to get camera coordinate from screen coordinate.</p>
+
+      
+    </div>
+
+    
+      
+
+    
+
+    <footer class="article-footer">
+      <a data-url="http://tsing-gu.com/blog/2015/09/15/XYZ-TO-EYE/" data-id="cj9f43gip000575fwxjsbrdqi" class="article-share-link">
+        <i class="fa fa-share"></i> Share
+      </a>
+      
+      
+  <ul class="article-tag-list"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/blog/tags/opengl/">opengl</a></li></ul>
+
+
+    </footer>
+  </div>
+  
+    
+<ul id="article-nav" class="nav nav-pills nav-justified">
+  
+  <li role="presentation">
+    <a href="/blog/2015/08/14/CPP-VIRTUAL-FUNC/" id="article-nav-older" class="article-nav-link-wrap">
+      <i class="fa fa-chevron-left pull-left"></i>
+      <span class="article-nav-link-title">C++ Function Overwriting</span>
+    </a>
+  </li>
+  
+  
+  <li role="presentation">
+    <a href="/blog/2016/03/03/OpenCV-3D-Reconstruction/" id="article-nav-newer" class="article-nav-link-wrap">
+      <span class="article-nav-link-title">OpenCV 3D Reconstruction</span>
+      <i class="fa fa-chevron-right pull-right"></i>
+    </a>
+  </li>
+  
+</ul>
+
+
+  
+</article>
+
+
+
+
+        </div>
+        <div class="col-sm-3 col-sm-offset-1 blog-sidebar">
+          
+  <div class="sidebar-module sidebar-module-inset">
+  <h4>About</h4>
+  <p>I'm a <em>graphics programmer</em> currently working on a data visualization software. </p> <p>I have enthusiastic in game development, computer graphics, computer vision and car mod. </p>
+
+</div>
+
+
+  
+  <div class="sidebar-module">
+    <h4>Categories</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/categories/tech/">tech</a><span class="sidebar-module-list-count">2</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Tags</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/tags/GL4Framework/">GL4Framework</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/tags/Lua/">Lua</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/tags/c/">c++</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/tags/opencv/">opencv</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/tags/opengl/">opengl</a><span class="sidebar-module-list-count">1</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Tag Cloud</h4>
+    <p class="tagcloud">
+      <a href="/blog/tags/GL4Framework/" style="font-size: 10px;">GL4Framework</a> <a href="/blog/tags/Lua/" style="font-size: 10px;">Lua</a> <a href="/blog/tags/c/" style="font-size: 10px;">c++</a> <a href="/blog/tags/opencv/" style="font-size: 10px;">opencv</a> <a href="/blog/tags/opengl/" style="font-size: 10px;">opengl</a>
+    </p>
+  </div>
+
+
+  
+  <div class="sidebar-module">
+    <h4>Archives</h4>
+    <ul class="sidebar-module-list"><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/archives/2017/09/">September 2017</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/archives/2016/03/">March 2016</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/archives/2015/09/">September 2015</a><span class="sidebar-module-list-count">1</span></li><li class="sidebar-module-list-item"><a class="sidebar-module-list-link" href="/blog/archives/2015/08/">August 2015</a><span class="sidebar-module-list-count">1</span></li></ul>
+  </div>
+
+
+
+  
+  <div class="sidebar-module">
+    <h4>Recents</h4>
+    <ul class="sidebar-module-list">
+      
+        <li>
+          <a href="/blog/2017/09/30/Embed-Lua-Console-with-ImGui/">Embed Lua Console with ImGui</a>
+        </li>
+      
+        <li>
+          <a href="/blog/2016/03/03/OpenCV-3D-Reconstruction/">OpenCV 3D Reconstruction</a>
+        </li>
+      
+        <li>
+          <a href="/blog/2015/09/15/XYZ-TO-EYE/">OpenGL Screen Space to View Space</a>
+        </li>
+      
+        <li>
+          <a href="/blog/2015/08/14/CPP-VIRTUAL-FUNC/">C++ Function Overwriting</a>
+        </li>
+      
+    </ul>
+  </div>
+
+
+
+        </div>
+    </div>
+  </div>
+  <footer class="blog-footer">
+  <div class="container">
+    <div id="footer-info" class="inner">
+      &copy; 2017 Qing Gu<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+  
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>
+
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
+
+
+
+<script src="/blog/js/script.js"></script>
+
+
+<!-- Begin: Injected MathJax -->
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({"tex2jax":{"inlineMath":[["$","$"],["\\(","\\)"]],"skipTags":["script","noscript","style","textarea","pre","code"],"processEscapes":true},"TeX":{"equationNumbers":{"autoNumber":"AMS"}}});
+</script>
+
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for(i=0; i < all.length; i += 1) {
+            all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+    });
+</script>
+
+<script type="text/javascript" src="//cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+</script>
+<!-- End: Injected MathJax -->
+</body>
+</html>
