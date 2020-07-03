@@ -1,6 +1,7 @@
 Title: Hello World
 Slug: HelloWorld
 Date: 2020-06-21 02:00
+Lang: en
 Category: Life
 Tags: Hello
 Author: Qing Gu

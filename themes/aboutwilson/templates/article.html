@@ -28,6 +28,16 @@
 		{% endfor %}
 	</div>
 	{% endif %}
+    {% if article.translations %} 
+    <div>
+        Languages:
+        {% for translation in article.translations %}
+        <span itemprop="translation">
+            <a href="{{ SITEURL }}/{{ translation.url }}" rel="translation">{{translation.lang}}</a>
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
 	<div itemprop="articleBody" class="article-body">{{ article.content }}</div>
 	<hr>
 	<h2>Comments</h2>
