@@ -6,13 +6,14 @@ THEME = 'themes/aboutwilson'
 ## used for OG tags and Twitter Card data of index page
 
 ###################################
-OUTPUT_PATH = 'output'
+OUTPUT_PATH = '../blog'
 DEFAULT_LANG = 'en'
 ARTICLE_URL = 'posts/{date:%Y}/{date:%m}/{slug}/'
 ARTICLE_SAVE_AS = 'posts/{date:%Y}/{date:%m}/{slug}/index.html'
 ARTICLE_LANG_URL = 'posts/{date:%Y}/{date:%m}/{slug}-{lang}/'
 ARTICLE_LANG_SAVE_AS = 'posts/{date:%Y}/{date:%m}/{slug}-{lang}/index.html'
 PATH = 'content'
+STATIC_PATHS = ['images', 'pdfs']
 
 # Feed generation is usually not desired when developing
 FEED_ALL_ATOM = None
