@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Multilingual posts with Pelican — QGU</title>
+	<meta name="description" content="Title: Multilingual posts with Pelican; Date: 2020-07-04; Author: Qing Gu">
+	<meta name="author" content="Qing Gu">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="../../../../theme/html5.js"></script>
+		<![endif]-->
+	<link href="../../../../theme/css/ipython.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootswatch/3.2.0/simplex/bootstrap.min.css" rel="stylesheet">
+	<link href="../../../../theme/css/local.css" rel="stylesheet">
+	<link href="../../../../theme/css/pygments.css" rel="stylesheet">
+</head>
+<body>
+<div class="container">
+	<div class="page-header">
+		<h1><a href="../../../../">QGU</a>
+			<br><small>A personal blog.</small></h1>	</div>
+	<div class="row">
+		<div class="col-md-8 col-md-offset-2">
+<div class="article" itemscope itemtype="http://schema.org/BlogPosting">
+	<div class="text-center article-header">
+		<h1 itemprop="name headline" class="article-title">Multilingual posts with Pelican</h1>
+		<span itemprop="author" itemscope itemtype="http://schema.org/Person">
+			<h4 itemprop="name">Qing Gu</h4>
+		</span>
+		<time datetime="2020-07-04T02:00:00-04:00" itemprop="datePublished">Sat 04 July 2020</time>
+	</div>
+	<div>
+		Category:
+		<span itemprop="articleSection">
+			<a href="../../../../category/pelican.html" rel="category">pelican</a>
+		</span>
+	</div>
+ 
+	<div>
+		Tags:
+		<span itemprop="keywords">
+			<a href="../../../../tag/blog.html" rel="tag">blog</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/pelican.html" rel="tag">pelican</a>
+		</span>
+	</div>
+ 
+    <div>
+        Languages:
+        <span itemprop="translation">
+            <a href="../../../../posts/2020/07/multilingual-pelican/" rel="translation">en</a>
+        </span>
+    </div>
+	<div itemprop="articleBody" class="article-body"><p><strong> TODO : CN translation</strong></p>
+<p>You may have noticed that this post has multiple translations.
+Pelican has multilingual support for posts. It's easy to use but requires some configurations. Here are my configurations.</p>
+<ol>
+<li>Setting up URLs for different languages in <code>pelicanconf.py</code></li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">DEFAULT_LANG</span> <span class="o">=</span> <span class="s1">&#39;en&#39;</span>
+<span class="n">ARTICLE_URL</span> <span class="o">=</span> <span class="s1">&#39;posts/{date:%Y}/{date:%m}/</span><span class="si">{slug}</span><span class="s1">/&#39;</span>
+<span class="n">ARTICLE_SAVE_AS</span> <span class="o">=</span> <span class="s1">&#39;posts/{date:%Y}/{date:%m}/</span><span class="si">{slug}</span><span class="s1">/index.html&#39;</span>
+<span class="n">ARTICLE_LANG_URL</span> <span class="o">=</span> <span class="s1">&#39;posts/{date:%Y}/{date:%m}/</span><span class="si">{slug}</span><span class="s1">-</span><span class="si">{lang}</span><span class="s1">/&#39;</span>
+<span class="n">ARTICLE_LANG_SAVE_AS</span> <span class="o">=</span> <span class="s1">&#39;posts/{date:%Y}/{date:%m}/</span><span class="si">{slug}</span><span class="s1">-</span><span class="si">{lang}</span><span class="s1">/index.html&#39;</span>
+</code></pre></div>
+
+
+<ol>
+<li>Write articles in different languages with <code>lang</code> property in the meta</li>
+</ol>
+<p><strong>insert <code>post-meta.png</code> here</strong></p>
+<ol>
+<li>Add language selector to theme template</li>
+</ol>
+<p>If needed, add language selection tags in the article template of the theme.
+I'm using <code>aboutwilson</code> theme which doesn't contain the translation field. In this case, I simply added the links to the template of the theme in <code>themes/aboutwilson/templates/article.html</code> right below the tags section.</p>
+<div class="highlight"><pre><span></span><code>{% if article.translations %} 
+<span class="p">&lt;</span><span class="nt">div</span><span class="p">&gt;</span>
+    Languages:
+    {% for translation in article.translations %}
+    <span class="p">&lt;</span><span class="nt">span</span> <span class="na">itemprop</span><span class="o">=</span><span class="s">&quot;translation&quot;</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">a</span> <span class="na">href</span><span class="o">=</span><span class="s">&quot;{{ SITEURL }}/{{ translation.url }}&quot;</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;translation&quot;</span><span class="p">&gt;</span>{{translation.lang}}<span class="p">&lt;/</span><span class="nt">a</span><span class="p">&gt;</span>
+    <span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+    {% endfor %}
+<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+</code></pre></div></div>
+	<hr>
+	<h2>Comments</h2>
+</div>
+		</div>
+	</div> 	<!-- <hr> -->
+</div> <!-- /container -->
+<footer class="aw-footer bg-danger">
+	<div class="container"> <!-- footer -->
+		<div class="row">
+			<div class="col-md-10 col-md-offset-1">
+				<div class="row">
+					<div class="col-md-3">
+						<h4>Navigation</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../..">QGU</a></li>
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Author</h4>
+						<ul class="list-unstyled my-list-style">
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Categories</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../../category/life.html">Life (2)</a></li>
+							<li><a href="../../../../category/pelican.html">pelican (1)</a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</footer>
+<div class="container">
+	<div class="row">
+		<div class="col-md-12 text-center center-block aw-bottom">
+			<p>&copy; Qing Gu 2016</p>
+			<p>Powered by Pelican</p>
+		</div>
+	</div>
+</div>
+<!-- JavaScript -->
+<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+	$("div.collapseheader").click(function () {
+		$header = $(this).children("span").first();
+		$codearea = $(this).children(".input_area");
+		$codearea.slideToggle(500, function () {
+			$header.text(function () {
+				return $codearea.is(":visible") ? "Collapse Code" : "Expand Code";
+			});
+		});
+	});
+});
+</script>
+</body>
+</html>
