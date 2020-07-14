@@ -26,7 +26,7 @@ AUTHOR_FEED_RSS = None
 AUTHOR = 'Qing Gu'
 SITENAME = "QGU"
 SITESUBTITLE = 'A personal blog.'
-SITEURL = 'http://qgu.io/blog'
+SITEURL = 'https://qgu.io/blog'
 ABSOLUTE_URL = SITEURL
 TIMEZONE = "America/Montreal"
 LOCALE = ("en_CA", "fr_CA", "zh_CN")
@@ -36,4 +36,5 @@ DEFAULT_DATE = (2012, 3, 2, 14, 1, 1)
 RELATIVE_URLS = True
 
 DEFAULT_PAGINATION = False
+DISQUS_SITENAME="QGU"
 
