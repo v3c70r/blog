@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Visual Assist like keybindings for Vim — QGU</title>
+	<meta name="description" content="Title: Visual Assist like keybindings for Vim; Date: 2020-07-13; Author: Qing Gu">
+	<meta name="author" content="Qing Gu">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="../../../../theme/html5.js"></script>
+		<![endif]-->
+	<link href="../../../../theme/css/ipython.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootswatch/3.2.0/simplex/bootstrap.min.css" rel="stylesheet">
+	<link href="../../../../theme/css/local.css" rel="stylesheet">
+	<link href="../../../../theme/css/pygments.css" rel="stylesheet">
+</head>
+<body>
+<div class="container">
+	<div class="page-header">
+		<h1><a href="../../../../">QGU</a>
+			<br><small>A personal blog.</small></h1>	</div>
+	<div class="row">
+		<div class="col-md-8 col-md-offset-2">
+<div class="article" itemscope itemtype="http://schema.org/BlogPosting">
+	<div class="text-center article-header">
+		<h1 itemprop="name headline" class="article-title">Visual Assist like keybindings for Vim</h1>
+		<span itemprop="author" itemscope itemtype="http://schema.org/Person">
+			<h4 itemprop="name">Qing Gu</h4>
+		</span>
+		<time datetime="2020-07-13T11:59:00-04:00" itemprop="datePublished">Mon 13 July 2020</time>
+	</div>
+	<div>
+		Category:
+		<span itemprop="articleSection">
+			<a href="../../../../category/vim.html" rel="category">vim</a>
+		</span>
+	</div>
+ 
+	<div>
+		Tags:
+		<span itemprop="keywords">
+			<a href="../../../../tag/vim.html" rel="tag">vim</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/ctags.html" rel="tag">ctags</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/cscope.html" rel="tag">cscope</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/visual-assist.html" rel="tag">visual assist</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/tool.html" rel="tag">tool</a>
+		</span>
+	</div>
+	<div itemprop="articleBody" class="article-body"><h1>Visual Assist like keybindings for Vim</h1>
+<p>After developing in Visual Studio at work for a few years, I have been spoiled by the convenience of a few shortcuts to navigate around the code. When I get back to Vim at home, my muscle memory can't help to press the same key combinations. To help this situation a little bit, I have created to some of the commonly used shortcuts in Vim to map to the same functionality as Visual Assist. It works surprisingly good so far. Here are a set of key bindings I'll set up in this post:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shift-Alt-g</td>
+<td>Open a file</td>
+</tr>
+<tr>
+<td>Shift-Alt-o</td>
+<td>Search for a symbol</td>
+</tr>
+<tr>
+<td>Alt-m</td>
+<td>Jump to symbols in current file</td>
+</tr>
+<tr>
+<td>Shift-Alt-f</td>
+<td>Search for all references</td>
+</tr>
+<tr>
+<td>Alt-o</td>
+<td>Jump between headers and sources</td>
+</tr>
+</tbody>
+</table>
+<h2>TL;DR</h2>
+<ol>
+<li>Install Ctags and Cscope</li>
+<li>Install CtrlP plugin for Vim</li>
+<li>Generate tags in the root folder of the project</li>
+</ol>
+<div class="highlight"><pre><span></span><code>ctags -R .
+</code></pre></div>
+
+
+<ol>
+<li>Generate Cscope database in the root folder of the project</li>
+</ol>
+<div class="highlight"><pre><span></span><code>cscope -R
+</code></pre></div>
+
+
+<ol>
+<li>Setup keybindings and Cscope auto load in <code>vimrc</code></li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="c">&quot; Visaul Assist style file and symbol search</span>
+<span class="nb">noremap</span> <span class="p">&lt;</span><span class="k">a</span><span class="p">-</span>s<span class="p">-</span>s<span class="p">&gt;</span> :CtrlPTag<span class="p">&lt;</span><span class="k">cr</span><span class="p">&gt;</span>
+<span class="nb">noremap</span> <span class="p">&lt;</span><span class="k">a</span><span class="p">-</span>s<span class="p">-</span><span class="k">o</span><span class="p">&gt;</span> :CtrlP<span class="p">&lt;</span><span class="k">cr</span><span class="p">&gt;</span>
+<span class="nb">noremap</span> <span class="p">&lt;</span><span class="k">a</span><span class="p">-</span><span class="k">m</span><span class="p">&gt;</span> :CtrlPBufTag<span class="p">&lt;</span><span class="k">cr</span><span class="p">&gt;</span>
+<span class="k">if</span> has<span class="p">(</span><span class="s2">&quot;cscope&quot;</span><span class="p">)</span>
+  <span class="k">set</span> <span class="nb">cscopetag</span>
+  <span class="k">set</span> <span class="nb">csto</span><span class="p">=</span><span class="m">0</span>
+  <span class="k">set</span> <span class="k">tags</span><span class="p">=</span>.<span class="sr">/tags,tags;/</span>
+  <span class="k">set</span> <span class="nb">cscopeverbose</span>
+<span class="c">  &quot; add any cscope database in current directory</span>
+  <span class="k">if</span> filereadable<span class="p">(</span><span class="s2">&quot;cscope.out&quot;</span><span class="p">)</span>
+    <span class="k">cs</span> add <span class="k">cscope</span>.out
+<span class="c">    &quot; else add the database pointed to by environment variable</span>
+  <span class="k">elseif</span> $CSCOPE_DB <span class="p">!=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">cs</span> add $CSCOPE_DB
+  <span class="k">endif</span>
+  nmap <span class="p">&lt;</span><span class="k">a</span><span class="p">-</span>s<span class="p">-</span><span class="k">f</span><span class="p">&gt;</span> :<span class="k">cs</span> find s <span class="p">&lt;</span>C<span class="p">-</span>R<span class="p">&gt;=</span>expand<span class="p">(</span><span class="s2">&quot;&lt;cword&gt;&quot;</span><span class="p">)&lt;</span>CR<span class="p">&gt;&lt;</span>CR<span class="p">&gt;</span>
+<span class="k">endif</span>
+</code></pre></div>
+
+
+<h2>Open Files with CtrlP</h2>
+<ul>
+<li>Required plugin/executable: <a href="https://github.com/ctrlpvim/ctrlp.vim">CtrlP</a></li>
+</ul>
+<p>CtrlP  is a great plugin to search files in folder, to use the keybinding, simply map the key combinations to invoke CtrlP command:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">noremap</span> <span class="p">&lt;</span><span class="k">a</span><span class="p">-</span>s<span class="p">-</span><span class="k">o</span><span class="p">&gt;</span> :CtrlP<span class="p">&lt;</span><span class="k">cr</span><span class="p">&gt;</span>
+</code></pre></div>
+
+
+<p><img alt="img" src="https://i.imgur.com/lmx0zxQ.gif"></p>
+<h2>Look for Symbols with CtrlP's Symbol Search</h2>
+<ul>
+<li>Required plugin/executable: <a href="https://github.com/ctrlpvim/ctrlp.vim">CtrlP</a>, <a href="http://ctags.sourceforge.net/">Ctags</a></li>
+</ul>
+<p>CtrlP works great with Ctags by invoking <code>CtrlPTag</code>. It works simply with another key mapping:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">noremap</span> <span class="p">&lt;</span><span class="k">a</span><span class="p">-</span>s<span class="p">-</span>s<span class="p">&gt;</span> :CtrlPTag<span class="p">&lt;</span><span class="k">cr</span><span class="p">&gt;</span>
+</code></pre></div>
+
+
+<p>Note that tag file is needed to make it work properly, to generate tags file, simply run the ctags at the root folder of the :</p>
+<div class="highlight"><pre><span></span><code>ctags -R .
+</code></pre></div>
+
+
+<p><img alt="img" src="https://i.imgur.com/wACdCIW.gif"></p>
+<h2>Jump to a symbol in current file</h2>
+<ul>
+<li>Required plugin/executable: <a href="https://github.com/ctrlpvim/ctrlp.vim">CtrlP</a>, <a href="http://ctags.sourceforge.net/">Ctags</a></li>
+</ul>
+<p>Similarly to search for symbols, searching for symbols within the file can be done with <code>CtrlPBufTag</code> command, adding the following key mapping to <code>vimrc</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">noremap</span> <span class="p">&lt;</span><span class="k">a</span><span class="p">-</span><span class="k">m</span><span class="p">&gt;</span> :CtrlPBufTag<span class="p">&lt;</span><span class="k">cr</span><span class="p">&gt;</span>
+</code></pre></div>
+
+
+<p><img alt="img" src="https://i.imgur.com/m2o0BBD.gif"></p>
+<h2>Find all References with Cscope</h2>
+<ul>
+<li>Required plugin/executable: <a href="http://cscope.sourceforge.net/">Cscope</a></li>
+</ul>
+<h3>Generate Cscope database file</h3>
+<p>We'll need to generate a database file for Cscope with command <code>cscope –Rb</code> at the root folder of the project. It will generate <code>cscope.out</code> database that will be used later in Vim.</p>
+<h3>Using Cscope in Vim</h3>
+<p>Cscope is a built-in feature for Vim. After generating the Cscope database, we can add it to Vim with <code>:cs add cscope.out</code>. Now, the cscope should be good to go. To search for all the references of a symbol, simply type <code>:cs find s [symbol]</code>
+<img alt="img" src="https://i.imgur.com/fZeDYAQ.gif"></p>
+<h3>Keybindings</h3>
+<p>Typing all the command with Cscope is too much work, a few keybindings has been provided by the <a href="http://cscope.sourceforge.net/cscope_vim_tutorial.html">Cscope tutorial</a>, with the vim file provided, you can simply search the references with <code>Ctrl+\ s</code> with the symbol under the cursor.</p>
+<div class="highlight"><pre><span></span><code>nmap <span class="p">&lt;</span>C<span class="p">-</span>\<span class="p">&gt;</span>s :<span class="k">cs</span> find s <span class="p">&lt;</span>C<span class="p">-</span>R<span class="p">&gt;=</span>expand<span class="p">(</span><span class="s2">&quot;&lt;cword&gt;&quot;</span><span class="p">)&lt;</span>CR<span class="p">&gt;&lt;</span>CR<span class="p">&gt;</span>
+</code></pre></div>
+
+
+<h3>Further optimization</h3>
+<p>Search result selection is far from optimal, we'll have to type the selection in command to jump to the specific item. It would be ideal to have something similar to <em>Ctrl-P</em>' s output selection</p></div>
+	<hr>
+	<h2>Comments</h2>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'QGU'; 
+    var disqus_title = 'Visual Assist like keybindings for Vim';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = 'https://' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+		</div>
+	</div> 	<!-- <hr> -->
+</div> <!-- /container -->
+<footer class="aw-footer bg-danger">
+	<div class="container"> <!-- footer -->
+		<div class="row">
+			<div class="col-md-10 col-md-offset-1">
+				<div class="row">
+					<div class="col-md-3">
+						<h4>Navigation</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../..">QGU</a></li>
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Author</h4>
+						<ul class="list-unstyled my-list-style">
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Categories</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../../category/pelican.html">pelican (1)</a></li>
+							<li><a href="../../../../category/vim.html">vim (1)</a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</footer>
+<div class="container">
+	<div class="row">
+		<div class="col-md-12 text-center center-block aw-bottom">
+			<p>&copy; Qing Gu 2016</p>
+			<p>Powered by Pelican</p>
+		</div>
+	</div>
+</div>
+<!-- JavaScript -->
+<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+	$("div.collapseheader").click(function () {
+		$header = $(this).children("span").first();
+		$codearea = $(this).children(".input_area");
+		$codearea.slideToggle(500, function () {
+			$header.text(function () {
+				return $codearea.is(":visible") ? "Collapse Code" : "Expand Code";
+			});
+		});
+	});
+});
+</script>
+</body>
+</html>
