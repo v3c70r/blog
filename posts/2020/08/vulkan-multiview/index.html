@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Render to CubeMap with Vulkan Multiview — QGU</title>
+	<meta name="description" content="Title: Render to CubeMap with Vulkan Multiview; Date: 2020-08-13; Author: Qing Gu">
+	<meta name="author" content="Qing Gu">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="../../../../theme/html5.js"></script>
+		<![endif]-->
+	<link href="../../../../theme/css/ipython.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootswatch/3.2.0/simplex/bootstrap.min.css" rel="stylesheet">
+	<link href="../../../../theme/css/local.css" rel="stylesheet">
+	<link href="../../../../theme/css/pygments.css" rel="stylesheet">
+</head>
+<body>
+<div class="container">
+	<div class="page-header">
+		<h1><a href="../../../../">QGU</a>
+			<br><small>A personal blog.</small></h1>	</div>
+	<div class="row">
+		<div class="col-md-8 col-md-offset-2">
+<div class="article" itemscope itemtype="http://schema.org/BlogPosting">
+	<div class="text-center article-header">
+		<h1 itemprop="name headline" class="article-title">Render to CubeMap with Vulkan Multiview</h1>
+		<span itemprop="author" itemscope itemtype="http://schema.org/Person">
+			<h4 itemprop="name">Qing Gu</h4>
+		</span>
+		<time datetime="2020-08-13T06:00:00-04:00" itemprop="datePublished">Thu 13 August 2020</time>
+	</div>
+	<div>
+		Category:
+		<span itemprop="articleSection">
+			<a href="../../../../category/vulkan.html" rel="category">vulkan</a>
+		</span>
+	</div>
+ 
+	<div>
+		Tags:
+		<span itemprop="keywords">
+			<a href="../../../../tag/vulkan.html" rel="tag">vulkan</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/rendering.html" rel="tag">rendering</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/graphics.html" rel="tag">graphics</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/pbr.html" rel="tag">pbr</a>
+		</span>
+	</div>
+	<div itemprop="articleBody" class="article-body"><h2>Render to CubeMap with Vulkan Multiview</h2>
+<p>Vulkan has introduced <a href="https://github.com/KhronosGroup/Vulkan-Docs/blob/master/appendices/VK_KHR_multiview.txt"><code>VK_KHR_multiview</code></a> in Vulkan 1.1 to facilitate the implementation of VR rendering. It allows user to index data with <code>gl_ViewIndex</code> and output it to the corresponding layer of the attachment image view. </p>
+<p>In my use case, I have encountered a situation while implementing PBR pipeline where I need to render HDR map and radiance map to cube maps. Each face of the cube map is generated with a camera placed orthogonally to each other. </p>
+<h2>Enable Extensions</h2>
+<p>There are extensions we need to enable on the logical device and on the instance. </p>
+<p>Logical: <code>VK_KHR_MULTIVIEW_EXTENSION_NAME</code>,  </p>
+<p>Instance: <code>VK_KHR_get_physical_device_properties2</code></p>
+<h2>Fill Multiview Create Info Struct</h2>
+<p>Multiview usage is declared while creating render pass. To tell the render pass to use mutliview, simply 
+fill a multiview create info <code>VkRenderPassMultiviewCreateInfo</code>,  and put it to the <code>pNext</code> of the renderpass create info</p>
+<div class="highlight"><pre><span></span><code>    <span class="n">VkRenderPassMultiviewCreateInfo</span> <span class="n">multiViewCI</span> <span class="o">=</span> <span class="p">{};</span>
+    <span class="n">multiViewCI</span><span class="p">.</span><span class="n">sType</span> <span class="o">=</span> <span class="n">VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO</span><span class="p">;</span>
+    <span class="n">multiViewCI</span><span class="p">.</span><span class="n">subpassCount</span> <span class="o">=</span> <span class="n">viewMasks</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+    <span class="n">multiViewCI</span><span class="p">.</span><span class="n">pViewMasks</span> <span class="o">=</span> <span class="n">viewMasks</span><span class="p">.</span><span class="n">data</span><span class="p">();</span>
+
+    <span class="n">VkRenderPassCreateInfo</span> <span class="n">renderPassInfo</span> <span class="o">=</span> <span class="p">{};</span>
+    <span class="n">renderPassInfo</span><span class="p">.</span><span class="n">pNext</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">multiViewCI</span><span class="p">;</span>
+    <span class="c1">//... Other Renderpass Info...</span>
+</code></pre></div>
+
+
+<h2>Create Image and Framebuffer to Take the output</h2>
+<p>Each view will write to the corresponding layer of the attachment of the framebuffer. So the Image of the attachment needs to be number of view layers. However, the framebuffer can have only 1 layer. It’s the attachment to have multiple layers. Here’s an explanation form the specification: <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkFramebufferCreateInfo.html">VkFramebufferCreateInfo</a>.</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// This is my code to generate a image and view</span>
+<span class="c1">// with 1 mip and 6 layers</span>
+<span class="n">VkImageView</span> <span class="n">view</span> <span class="o">=</span> <span class="n">GetRenderResourceManager</span><span class="p">()</span>
+    <span class="o">-&gt;</span><span class="n">getColorTarget</span><span class="p">(</span><span class="s">&quot;irr_cube_map&quot;</span><span class="p">,</span> <span class="p">{</span><span class="n">IRR_CUBE_DIM</span><span class="p">,</span> <span class="n">IRR_CUBE_DIM</span><span class="p">},</span>
+                     <span class="n">TEX_FORMAT</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span> <span class="c1">// &lt;- 1 mip, 6 layers</span>
+                     <span class="o">-&gt;</span><span class="n">getView</span><span class="p">();</span>
+<span class="c1">// Create framebuffer</span>
+<span class="n">VkFramebufferCreateInfo</span> <span class="n">frameBufferCreateInfo</span> <span class="o">=</span> <span class="p">{};</span>
+<span class="n">frameBufferCreateInfo</span><span class="p">.</span><span class="n">sType</span> <span class="o">=</span> <span class="n">VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO</span><span class="p">;</span>
+<span class="n">frameBufferCreateInfo</span><span class="p">.</span><span class="n">layers</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="c1">// &lt;- 1 layer for framebuffer</span>
+<span class="n">frameBufferCreateInfo</span><span class="p">.</span><span class="n">pAttachments</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">view</span><span class="p">;</span>
+<span class="c1">// ... other framebuffer info</span>
+</code></pre></div>
+
+
+<h2>Enable Shader Extension and Use the View Index</h2>
+<p>The only change I made is in the vertex shader to index ProjectView matrix with <code>gl_ViewIndex</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#extension GL_EXT_multiview : enable // &lt;- Enable shader extension</span>
+<span class="c1">// Hardcoded mPV for each face of the cube</span>
+<span class="kt">mat4</span> <span class="n">mProjViews</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="p">{{{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">1.010101</span><span class="p">,</span> <span class="mf">1.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="o">-</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.101010</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">}},</span>
+                      <span class="p">{{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.010101</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.101010</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">}},</span>
+                      <span class="p">{{</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">1.010101</span><span class="p">,</span> <span class="mf">1.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.101010</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">}},</span>
+                      <span class="p">{{</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.010101</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.101010</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">}},</span>
+                      <span class="p">{{</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">1.010101</span><span class="p">,</span> <span class="mf">1.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.101010</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">}},</span>
+                      <span class="p">{{</span><span class="o">-</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.010101</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.000000</span><span class="p">},</span>
+                       <span class="p">{</span><span class="mf">0.000000</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.101010</span><span class="p">,</span> <span class="mf">0.000000</span><span class="p">}}};</span>
+<span class="c1">// Indexing the output</span>
+<span class="nb">gl_Position</span> <span class="o">=</span> <span class="n">mProjViews</span><span class="p">[</span><span class="nb">gl_ViewIndex</span><span class="p">]</span> <span class="o">*</span> <span class="kt">vec4</span><span class="p">(</span><span class="n">inPos</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">);</span>
+</code></pre></div>
+
+
+<p>Don't forget to enable shader extension: <code>#extension GL_EXT_multiview : enable</code>.</p>
+<h2>Implementations note</h2>
+<ul>
+<li>Mutliview is not supported by MacOS with MoltenVK, track the feature <a href="https://github.com/KhronosGroup/MoltenVK/issues/347">at Github issue</a>.</li>
+<li>Skybox need to change front face mode since we are looking from the inside. This applies if you are using a cube mesh like I do.</li>
+<li>glm need to force the range between 0, 1 using macro: <code>#defineGLM_FORCE_DEPTH_ZERO_TO_ONE</code></li>
+</ul>
+<h2>Bonus: Code to generate cube views</h2>
+<p>Here's the code I used to generate the hard coded View matrices used in the shader above to look at 6 faces of the cube.</p>
+<div class="highlight"><pre><span></span><code><span class="cp">#define GLM_ENABLE_EXPERIMENTAL</span>
+<span class="cp">#define GLM_FORCE_DEPTH_ZERO_TO_ONE</span>
+<span class="cp">#include</span> <span class="cpf">&quot;glm/glm.hpp&quot;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&quot;glm/glm/gtc/matrix_transform.hpp&quot;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&quot;glm/glm/gtx/string_cast.hpp&quot;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;iostream&gt;</span><span class="cp"></span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">glm</span><span class="o">::</span><span class="n">mat4</span> <span class="n">captureProjection</span> <span class="o">=</span>
+        <span class="n">glm</span><span class="o">::</span><span class="n">perspective</span><span class="p">((</span><span class="kt">float</span><span class="p">)</span><span class="n">M_PI</span> <span class="o">/</span> <span class="mf">2.0f</span><span class="p">,</span> <span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.1f</span><span class="p">,</span> <span class="mf">10.0f</span><span class="p">);</span>
+    <span class="n">glm</span><span class="o">::</span><span class="n">mat4</span> <span class="n">captureViews</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">glm</span><span class="o">::</span><span class="n">lookAt</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span>
+                    <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">)),</span>
+        <span class="n">glm</span><span class="o">::</span><span class="n">lookAt</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span>
+                    <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">)),</span>
+        <span class="n">glm</span><span class="o">::</span><span class="n">lookAt</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span>
+                    <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">1.0f</span><span class="p">)),</span>
+        <span class="n">glm</span><span class="o">::</span><span class="n">lookAt</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span>
+                    <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0f</span><span class="p">)),</span>
+        <span class="n">glm</span><span class="o">::</span><span class="n">lookAt</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">1.0f</span><span class="p">),</span>
+                    <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">)),</span>
+        <span class="n">glm</span><span class="o">::</span><span class="n">lookAt</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">),</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0f</span><span class="p">),</span>
+                    <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mf">0.0f</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0f</span><span class="p">,</span> <span class="mf">0.0f</span><span class="p">))};</span>
+
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="mi">6</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="o">&lt;&lt;</span><span class="n">glm</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">captureProjection</span> <span class="o">*</span> <span class="n">captureViews</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="o">&lt;&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+	<hr>
+	<h2>Comments</h2>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'QGU'; 
+    var disqus_title = 'Render to CubeMap with Vulkan Multiview';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = 'https://' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+		</div>
+	</div> 	<!-- <hr> -->
+</div> <!-- /container -->
+<footer class="aw-footer bg-danger">
+	<div class="container"> <!-- footer -->
+		<div class="row">
+			<div class="col-md-10 col-md-offset-1">
+				<div class="row">
+					<div class="col-md-3">
+						<h4>Navigation</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../..">QGU</a></li>
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Author</h4>
+						<ul class="list-unstyled my-list-style">
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Categories</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../../category/pelican.html">pelican (1)</a></li>
+							<li><a href="../../../../category/vim.html">vim (1)</a></li>
+							<li><a href="../../../../category/vulkan.html">vulkan (1)</a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</footer>
+<div class="container">
+	<div class="row">
+		<div class="col-md-12 text-center center-block aw-bottom">
+			<p>&copy; Qing Gu 2016</p>
+			<p>Powered by Pelican</p>
+		</div>
+	</div>
+</div>
+<!-- JavaScript -->
+<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+	$("div.collapseheader").click(function () {
+		$header = $(this).children("span").first();
+		$codearea = $(this).children(".input_area");
+		$codearea.slideToggle(500, function () {
+			$header.text(function () {
+				return $codearea.is(":visible") ? "Collapse Code" : "Expand Code";
+			});
+		});
+	});
+});
+</script>
+</body>
+</html>
