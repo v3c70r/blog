@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z — QGU</title>
+	<meta name="description" content="Title: Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z; Date: 2020-10-30; Author: Qing Gu">
+	<meta name="author" content="Qing Gu">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="../../../../theme/html5.js"></script>
+		<![endif]-->
+	<link href="../../../../theme/css/ipython.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">
+	<link href="//maxcdn.bootstrapcdn.com/bootswatch/3.2.0/simplex/bootstrap.min.css" rel="stylesheet">
+	<link href="../../../../theme/css/local.css" rel="stylesheet">
+	<link href="../../../../theme/css/pygments.css" rel="stylesheet">
+</head>
+<body>
+<div class="container">
+	<div class="page-header">
+		<h1><a href="../../../../">QGU</a>
+			<br><small>A personal blog.</small></h1>	</div>
+	<div class="row">
+		<div class="col-md-8 col-md-offset-2">
+<div class="article" itemscope itemtype="http://schema.org/BlogPosting">
+	<div class="text-center article-header">
+		<h1 itemprop="name headline" class="article-title">Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z</h1>
+		<span itemprop="author" itemscope itemtype="http://schema.org/Person">
+			<h4 itemprop="name">Qing Gu</h4>
+		</span>
+		<time datetime="2020-10-30T02:00:00-04:00" itemprop="datePublished">Fri 30 October 2020</time>
+	</div>
+	<div>
+		Category:
+		<span itemprop="articleSection">
+			<a href="../../../../category/graphics.html" rel="category">graphics</a>
+		</span>
+	</div>
+ 
+	<div>
+		Tags:
+		<span itemprop="keywords">
+			<a href="../../../../tag/graphics.html" rel="tag">graphics</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/rendering.html" rel="tag">rendering</a>
+		</span>
+		<span itemprop="keywords">
+			<a href="../../../../tag/clipping-plane.html" rel="tag">clipping plane</a>
+		</span>
+	</div>
+	<div itemprop="articleBody" class="article-body"><p>Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It's especially useful in rasterizing mirrors. 
+<a href="http://www.terathon.com/lengyel/Lengyel-Oblique.pdf">The paper by Eric Lengyel</a> has discussed the derivation of such clipping plane in OpenGL NDC with <span class="math">\(x, y, z \in [-1.0, 1.0]\)</span>. However in other APIs like D3D and Vulkan, the z lies in <span class="math">\(z\in[0.0, 1.0]\)</span> . This article discusses how we modify the original method proposed in the paper to achieve the same result.</p>
+<p>In addition, we'll talk about how to handle the matrix with reversed Z techniques. </p>
+<p>In the following discussion, elements with <em>prime(')</em> are in view space, otherwise, they are in clip space. There are the notations we used in the following discussion:</p>
+<ul>
+<li><span class="math">\(C_n\)</span>: Near clipping plane in clip space, <span class="math">\(C_n'\)</span> is the clipping plane in view space.</li>
+<li><span class="math">\(C_f\)</span>: Far clipping plane in clip space, <span class="math">\(C_f'\)</span> is the far clipping plane in view space.</li>
+<li><span class="math">\(M\)</span>: Projection matrix where <span class="math">\(M_n\)</span>  denotes the <em>n</em>th row , i.e.:</li>
+</ul>
+<div class="math">$$M = \begin{pmatrix}
+M_1\\ 
+M_2\\ 
+M_3\\ 
+M_4
+\end{pmatrix}$$</div>
+<p>
+* <span class="math">\(Q\)</span> denotes a point opposite to the near clipping plane. We'll discuss it later.</p>
+<h2>Oblique Clipping Plane</h2>
+<blockquote>
+<p>TL;DR</p>
+<p>Substitute the third row of projection <span class="math">\(M_3\)</span> with 
+<div class="math">$$M_3=\frac{M_4\cdot Q'}{C_n \cdot Q'}C_n'$$</div>
+where <span class="math">\(Q' = M^{-1}Q\)</span> and <span class="math">\(Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))\)</span></p>
+</blockquote>
+<p>Giving a normal <span class="math">\(\mathbf{n}\)</span> and a point <span class="math">\(\mathbf{p}\)</span>, we can construct a plane <span class="math">\(C=&lt;\mathbf{n}_x, \mathbf{n}_y, \mathbf{n}_z, -\mathbf{n}\cdot \mathbf{p}\)</span>&gt;.
+Also, to transform a plane from view space to clip space, we need to apply the transpose of inverse of the matrix. 
+</p>
+<div class="math">$$C = (M^{-1})^TC'$$</div>
+<p>
+This gives us the transformation of a plane from clip space to view space:
+</p>
+<div class="math">$$C' = M^TC$$</div>
+<p>
+Picking a point <span class="math">\(\mathbf{p_n}=(0, 0, 0)\)</span> and normal <span class="math">\(\mathbf{n_n}=(0, 0, 1)\)</span>on the near plane in clip space, we can have near clipping plane:
+</p>
+<div class="math">$$C_n=&lt;0, 0, 1, 0&gt;$$</div>
+<p> 
+The transformation of the plane from clip space to view space:
+</p>
+<div class="math">$$C_n' = M^TC_n=(M_1, M_2, M_3, M4)(0, 0, 1, 0)=M_3$$</div>
+<p>Similarly, picking a point <span class="math">\(\mathbf{p_f}=(0, 0, 1)\)</span> and normal <span class="math">\(\mathbf{n_f}=(0, 0, -1)\)</span> on the far clipping plane, we have:
+</p>
+<div class="math">$$C_f=&lt;0, 0, -1, 1&gt;$$</div>
+<div class="math">$$C_f' = M^TC_f=M_4-M_3=M_4-C_n'$$</div>
+<p>
+As discussed in the original paper, we want to find a scale factor <span class="math">\(a\)</span> that makes far plane <span class="math">\(C'_f = M_4 - aC'_n\)</span> crosses its opposite point <span class="math">\(Q\)</span> in the original clipp space, see the Q illustrated in the image.
+<img alt="Q position" src="https://i.imgur.com/1hwILu2.png">
+Then we can have the following equations:</p>
+<div class="math">$$
+\left\{\begin{array}{ll}
+Q'\cdot C_f'=0
+\\
+C'_f=M_4-C_n'
+\\
+Q'=M^{-1}Q
+\\ 
+Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))
+\end{array}\right.
+$$</div>
+<div class="math">$$
+\Rightarrow 
+\left\{\begin{array}{ll}
+a=\frac{M_4\cdot Q'}{C_n'\cdot Q'}C_n'
+\\
+Q'=M^{-1}Q
+\\ 
+Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))
+\\
+M_3 = aC_n'
+\end{array}\right.
+$$</div>
+<h2>A Note on Reversed Near Far Planes</h2>
+<p>It's not uncommon to use the <a href="http://www.humus.name/index.php?page=Comments&amp;ID=255&amp;start=0">reversed Z trick</a> to gain more precision from the depth buffer to facilitate linear depth reconstruction. This trick simply swapped near and far planes in the projection matrix and use <em>GREATER</em> for depth test function.  However, this trick introduces complexity in the equations above. One easy way to handle this is to apply a Z flipping matrix <span class="math">\(M_f\)</span> after applying the oblique clipping plane, where:</p>
+<div class="math">$$M_f = \begin{bmatrix}
+1 &amp;  0&amp;  0&amp; 0\\ 
+0 &amp;  1&amp;  0&amp; 0\\ 
+0 &amp;  0&amp;  -1&amp; 1\\ 
+0 &amp;  0&amp;  1&amp; 1
+\end{bmatrix}$$</div>
+<h2>Further discussions on view space z reconstruction</h2>
+<p>In the traditional projection matrix, depth can be reconstructed by simply knowing the depth at that pixel position, this is because the first two elements in the 3rd row(<span class="math">\(M_3\)</span>) are 0. When <span class="math">\(w'=1\)</span>, depth remapping can be simply written as a function of clip space depth <span class="math">\(z\)</span>:
+</p>
+<div class="math">$$z = \frac{M_{33}z'+M_{34}}{-z'}\rightarrow z'=\frac{M_{34}}{M_{33}+z}$$</div>
+<p>However, when <span class="math">\(M_{31}\)</span> and <span class="math">\(M_{32}\)</span> are no longer 0, we'll need the clip space positions to reconstruct the depth. Given a point <span class="math">\(\mathbf{p}(x, y, z, 1)\)</span> in clip space, we can reconstruct the depth in view space <span class="math">\(z'\)</span>:</p>
+<div class="math">$$
+\left\{\begin{array}{ll}
+x'=\frac{x}{M_{11}}
+\\
+y' = \frac{y}{M_{22}}
+\\ 
+z=\frac{\mathbf{M_3}\cdot \mathbf{p'}}{-z'}
+\end{array}\right.
+\Rightarrow z'=-\frac{\frac{M_{31}}{M_{11}}x+\frac{M_{32}}{M_{22}}y+M_{34}}{M_{33}+z}
+$$</div>
+<script type="text/javascript">if (!document.getElementById('mathjaxscript_pelican_#%@#$@#')) {
+    var align = "center",
+        indent = "0em",
+        linebreak = "false";
+
+    if (false) {
+        align = (screen.width < 768) ? "left" : align;
+        indent = (screen.width < 768) ? "0em" : indent;
+        linebreak = (screen.width < 768) ? 'true' : linebreak;
+    }
+
+    var mathjaxscript = document.createElement('script');
+    mathjaxscript.id = 'mathjaxscript_pelican_#%@#$@#';
+    mathjaxscript.type = 'text/javascript';
+    mathjaxscript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.3/latest.js?config=TeX-AMS-MML_HTMLorMML';
+
+    var configscript = document.createElement('script');
+    configscript.type = 'text/x-mathjax-config';
+    configscript[(window.opera ? "innerHTML" : "text")] =
+        "MathJax.Hub.Config({" +
+        "    config: ['MMLorHTML.js']," +
+        "    TeX: { extensions: ['AMSmath.js','AMSsymbols.js','noErrors.js','noUndefined.js'], equationNumbers: { autoNumber: 'none' } }," +
+        "    jax: ['input/TeX','input/MathML','output/HTML-CSS']," +
+        "    extensions: ['tex2jax.js','mml2jax.js','MathMenu.js','MathZoom.js']," +
+        "    displayAlign: '"+ align +"'," +
+        "    displayIndent: '"+ indent +"'," +
+        "    showMathMenu: true," +
+        "    messageStyle: 'normal'," +
+        "    tex2jax: { " +
+        "        inlineMath: [ ['\\\\(','\\\\)'] ], " +
+        "        displayMath: [ ['$$','$$'] ]," +
+        "        processEscapes: true," +
+        "        preview: 'TeX'," +
+        "    }, " +
+        "    'HTML-CSS': { " +
+        "        availableFonts: ['STIX', 'TeX']," +
+        "        preferredFont: 'STIX'," +
+        "        styles: { '.MathJax_Display, .MathJax .mo, .MathJax .mi, .MathJax .mn': {color: 'inherit ! important'} }," +
+        "        linebreaks: { automatic: "+ linebreak +", width: '90% container' }," +
+        "    }, " +
+        "}); " +
+        "if ('default' !== 'default') {" +
+            "MathJax.Hub.Register.StartupHook('HTML-CSS Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax['HTML-CSS'].FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+            "MathJax.Hub.Register.StartupHook('SVG Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax.SVG.FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+        "}";
+
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(configscript);
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(mathjaxscript);
+}
+</script></div>
+	<hr>
+	<h2>Comments</h2>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'QGU'; 
+    var disqus_title = 'Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = 'https://' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+		</div>
+	</div> 	<!-- <hr> -->
+</div> <!-- /container -->
+<footer class="aw-footer bg-danger">
+	<div class="container"> <!-- footer -->
+		<div class="row">
+			<div class="col-md-10 col-md-offset-1">
+				<div class="row">
+					<div class="col-md-3">
+						<h4>Navigation</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../..">QGU</a></li>
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Author</h4>
+						<ul class="list-unstyled my-list-style">
+						</ul>
+					</div>
+					<div class="col-md-3">
+						<h4>Categories</h4>
+						<ul class="list-unstyled my-list-style">
+							<li><a href="../../../../category/graphics.html">graphics (1)</a></li>
+							<li><a href="../../../../category/pelican.html">pelican (1)</a></li>
+							<li><a href="../../../../category/vim.html">vim (1)</a></li>
+							<li><a href="../../../../category/vulkan.html">vulkan (1)</a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</footer>
+<div class="container">
+	<div class="row">
+		<div class="col-md-12 text-center center-block aw-bottom">
+			<p>&copy; Qing Gu 2016</p>
+			<p>Powered by Pelican</p>
+		</div>
+	</div>
+</div>
+<!-- JavaScript -->
+<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+<script type="text/javascript">
+jQuery(document).ready(function($) {
+	$("div.collapseheader").click(function () {
+		$header = $(this).children("span").first();
+		$codearea = $(this).children(".input_area");
+		$codearea.slideToggle(500, function () {
+			$header.text(function () {
+				return $codearea.is(":visible") ? "Collapse Code" : "Expand Code";
+			});
+		});
+	});
+});
+</script>
+</body>
+</html>
