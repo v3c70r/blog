@@ -12,7 +12,8 @@ cp ../_next_config.yml themes/next/_config.yml
 
 # Config pandoc renderer
 npm un hexo-renderer-marked
-npm i hexo-renderer-pandoc
+npm i hexo-renderer-pandoc --save
+npm i hexo-deployer-git --save
 
 # Add deploy key
 ssh-add ../blog-deploy-key
