@@ -18,6 +18,6 @@ npm i hexo-renderer-pandoc
 ssh-add ../blog-deploy-key
 # push to blog repo
 hexo generate
-hexo depoly
+hexo deploy
 
 
