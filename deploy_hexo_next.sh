@@ -13,7 +13,12 @@ cp ../_next_config.yml themes/next/_config.yml
 # Config pandoc renderer
 npm un hexo-renderer-marked
 npm i hexo-renderer-pandoc --save
+npm i hexo-deployer-git --save
 
+# push to blog repo
+git config --global user.email "gh@qgu.com"
+git config --global user.name "Qing Gu"
 hexo generate
+hexo deploy
 
 
