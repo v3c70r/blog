@@ -31,7 +31,7 @@ jobs:
       # Runs a single command using the runners shell
       - name: Install dependencies
         run: |
-          apt install pandoc -y
+          sudo apt-get install pandoc -y
           npm i hexo
 
       # Runs a set of commands using the runners shell
