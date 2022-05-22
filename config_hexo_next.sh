@@ -18,6 +18,8 @@ npm i hexo-deployer-git --save
 # Add deploy key
 ssh-add ../blog-deploy-key
 # push to blog repo
+git config --global user.email "gh@qgu.com"
+git config --global user.name "Qing Gu"
 hexo generate
 hexo deploy
 
