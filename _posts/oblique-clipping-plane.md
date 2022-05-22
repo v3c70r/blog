@@ -1,11 +1,13 @@
-Title: Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z
-Slug: oblique-clipping-plane
-Date: 2020-10-30 02:00
-Lang: en
-Category: graphics
-Tags: graphics, rendering, clipping plane
-Author: Qing Gu
-Summary: Using oblique clipping plane in Vulkan and D3D clip space.
+---
+title: Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z
+slug: oblique-clipping-plane
+date: 2020-10-30 02:00
+lang: en
+category: graphics
+tags: graphics, rendering, clipping plane
+author: Qing Gu
+summary: Using oblique clipping plane in Vulkan and D3D clip space.
+---
 
 Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It's especially useful in rasterizing mirrors. 
 [The paper by Eric Lengyel](http://www.terathon.com/lengyel/Lengyel-Oblique.pdf) has discussed the derivation of such clipping plane in OpenGL NDC with $x, y, z \in [-1.0, 1.0]$. However in other APIs like D3D and Vulkan, the z lies in $z\in[0.0, 1.0]$ . This article discusses how we modify the original method proposed in the paper to achieve the same result.

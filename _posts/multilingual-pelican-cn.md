@@ -1,11 +1,13 @@
-Title: Pelican 发布多语言文章
-Slug: multilingual-pelican
-Date: 2020-07-04 02:00
-Lang: 中
-Category: pelican
-Tags: blog, pelican
-Author: Qing Gu
-Summary: Tutorial of how this blog was build
+---
+title: Pelican 发布多语言文章
+slug: multilingual-pelican
+date: 2020-07-04 02:00
+lang: 中
+category: pelican
+tags: blog, pelican
+author: Qing Gu
+summary: Tutorial of how this blog was build
+---
 
 你应该已经注意到这篇文章有多个语言的翻译。
 Pelican 支持发布多语言文章，只需要一些简答的设置就能实现该功能。以下是我为了实现多语言支持进行的设置。

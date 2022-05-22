@@ -1,11 +1,13 @@
-Title: Multilingual post with Pelican
-Slug: multilingual-pelican
-Date: 2020-07-04 02:00
-Lang: en
-Category: pelican
-Tags: blog, pelican
-Author: Qing Gu
-Summary: Tutorial of how this blog was build
+---
+title: Multilingual post with Pelican
+slug: multilingual-pelican
+date: 2020-07-04 02:00
+lang: en
+category: pelican
+tags: blog, pelican
+author: Qing Gu
+summary: Tutorial of how this blog was build
+---
 
 You may have noticed that this post has multiple translations.
 Pelican has multilingual support for posts. It's easy to use but requires some configurations. Here are my configurations to make it work for my blog.

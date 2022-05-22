@@ -1,11 +1,13 @@
-Title: Visual Assist like keybindings for Vim
-Slug: vim-vs-keybinding
-Date: 2020-07-13 11:59
-Lang: en
-Category: vim
-Tags: vim, ctags, cscope, visual assist, tool
-Author: Qing Gu
-Summary: How to use Visual Assist keybindings for Vim
+---
+title: Visual Assist like keybindings for Vim
+slug: vim-vs-keybinding
+date: 2020-07-13 11:59
+lang: en
+category: vim
+tags: vim, ctags, cscope, visual assist, tool
+author: Qing Gu
+summary: How to use Visual Assist keybindings for Vim
+---
 
 
 # Visual Assist like keybindings for Vim

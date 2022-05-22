@@ -1,11 +1,13 @@
-Title: Render to CubeMap with Vulkan Multiview
-Slug: vulkan-multiview
-Date: 2020-08-13 06:00
-Lang: en
-Category: vulkan
-Tags: vulkan, rendering, graphics, pbr
-Author: Qing Gu
-Summary: How to use Multivew render pass in Vulkan to render to cube maps
+---
+title: Render to CubeMap with Vulkan Multiview
+slug: vulkan-multiview
+date: 2020-08-13 06:00
+lang: en
+category: vulkan
+tags: vulkan, rendering, graphics, pbr
+author: Qing Gu
+summary: How to use Multivew render pass in Vulkan to render to cube maps
+---
 
 ## Render to CubeMap with Vulkan Multiview
 
