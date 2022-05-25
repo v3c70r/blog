@@ -6,6 +6,8 @@ category: vulkan
 tags: vulkan, rendering, graphics, imgui
 ---
 
+![result](https://i.imgur.com/m7mhHiP.png)
+
 `ImGui` comes with a handy image widget in their demo page. It works magically in my engine to display the built-in font textures, even though I didn't explicitly bind it during the runtime. The `ImGui::Image()` function to draw pictures has a `textureId`, which is also unclear to me.
 
 Since I'm writing my own rendering backend, I took some time to investigate how the `textureId` works.
