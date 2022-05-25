@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/blog/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/blog/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/blog/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/blog/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/blog/css/main.css">
+
+
+<link rel="stylesheet" href="/blog/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"qgu.io","root":"/blog/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It&#39;s especially useful in rasterizing mirrors. The paper by Eric Lengyel has discussed the derivation of such cli">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z">
+<meta property="og:url" content="https://qgu.io/blog/2020/10/30/oblique-clipping-plane/index.html">
+<meta property="og:site_name" content="QGU">
+<meta property="og:description" content="Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It&#39;s especially useful in rasterizing mirrors. The paper by Eric Lengyel has discussed the derivation of such cli">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://i.imgur.com/1hwILu2.png">
+<meta property="article:published_time" content="2020-10-30T02:00:00.000Z">
+<meta property="article:modified_time" content="2022-05-25T19:54:14.745Z">
+<meta property="article:author" content="Q Gu">
+<meta property="article:tag" content="graphics, rendering, clipping plane">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://i.imgur.com/1hwILu2.png">
+
+<link rel="canonical" href="https://qgu.io/blog/2020/10/30/oblique-clipping-plane/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'en'
+  };
+</script>
+
+  <title>Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z | QGU</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/blog/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">QGU</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Quantum Gravity Unitarity</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/blog/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/blog/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2020/10/30/oblique-clipping-plane/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/blog/images/avatar.gif">
+      <meta itemprop="name" content="Q Gu">
+      <meta itemprop="description" content="Ideas are mine and mine only">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="QGU">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2020-10-30 02:00:00" itemprop="dateCreated datePublished" datetime="2020-10-30T02:00:00+00:00">2020-10-30</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2022-05-25 19:54:14" itemprop="dateModified" datetime="2022-05-25T19:54:14+00:00">2022-05-25</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/blog/categories/graphics/" itemprop="url" rel="index"><span itemprop="name">graphics</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It's especially useful in rasterizing mirrors. <a target="_blank" rel="noopener" href="http://www.terathon.com/lengyel/Lengyel-Oblique.pdf">The paper by Eric Lengyel</a> has discussed the derivation of such clipping plane in OpenGL NDC with <span class="math inline">\(x, y, z \in [-1.0, 1.0]\)</span>. However in other APIs like D3D and Vulkan, the z lies in <span class="math inline">\(z\in[0.0, 1.0]\)</span> . This article discusses how we modify the original method proposed in the paper to achieve the same result.</p>
+<p>In addition, we'll talk about how to handle the matrix with reversed Z techniques.</p>
+<p>In the following discussion, elements with <em>prime(')</em> are in view space, otherwise, they are in clip space. There are the notations we used in the following discussion:</p>
+<ul>
+<li><span class="math inline">\(C_n\)</span>: Near clipping plane in clip space, <span class="math inline">\(C_n&#39;\)</span> is the clipping plane in view space.</li>
+<li><span class="math inline">\(C_f\)</span>: Far clipping plane in clip space, <span class="math inline">\(C_f&#39;\)</span> is the far clipping plane in view space.</li>
+<li><span class="math inline">\(M\)</span>: Projection matrix where <span class="math inline">\(M_n\)</span> denotes the <em>n</em>th row , i.e.:</li>
+</ul>
+<p><span class="math display">\[M = \begin{pmatrix}
+M_1\\ 
+M_2\\ 
+M_3\\ 
+M_4
+\end{pmatrix}\]</span> * <span class="math inline">\(Q\)</span> denotes a point opposite to the near clipping plane. We'll discuss it later.</p>
+<h2 id="oblique-clipping-plane">Oblique Clipping Plane</h2>
+<blockquote>
+<p>TL;DR</p>
+<p>Substitute the third row of projection <span class="math inline">\(M_3\)</span> with <span class="math display">\[M_3=\frac{M_4\cdot Q&#39;}{C_n \cdot Q&#39;}C_n&#39;\]</span> where <span class="math inline">\(Q&#39; = M^{-1}Q\)</span> and <span class="math inline">\(Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))\)</span></p>
+</blockquote>
+<p>Giving a normal <span class="math inline">\(\mathbf{n}\)</span> and a point <span class="math inline">\(\mathbf{p}\)</span>, we can construct a plane <span class="math inline">\(C=&lt;\mathbf{n}_x, \mathbf{n}_y, \mathbf{n}_z, -\mathbf{n}\cdot \mathbf{p}\)</span>&gt;. Also, to transform a plane from view space to clip space, we need to apply the transpose of inverse of the matrix. <span class="math display">\[C = (M^{-1})^TC&#39;\]</span> This gives us the transformation of a plane from clip space to view space: <span class="math display">\[C&#39; = M^TC\]</span> Picking a point <span class="math inline">\(\mathbf{p_n}=(0, 0, 0)\)</span> and normal <span class="math inline">\(\mathbf{n_n}=(0, 0, 1)\)</span>on the near plane in clip space, we can have near clipping plane: <span class="math display">\[C_n=&lt;0, 0, 1, 0&gt;\]</span> The transformation of the plane from clip space to view space: <span class="math display">\[C_n&#39; = M^TC_n=(M_1, M_2, M_3, M4)(0, 0, 1, 0)=M_3\]</span></p>
+<p>Similarly, picking a point <span class="math inline">\(\mathbf{p_f}=(0, 0, 1)\)</span> and normal <span class="math inline">\(\mathbf{n_f}=(0, 0, -1)\)</span> on the far clipping plane, we have: <span class="math display">\[C_f=&lt;0, 0, -1, 1&gt;\]</span> <span class="math display">\[C_f&#39; = M^TC_f=M_4-M_3=M_4-C_n&#39;\]</span> As discussed in the original paper, we want to find a scale factor <span class="math inline">\(a\)</span> that makes far plane <span class="math inline">\(C&#39;_f = M_4 - aC&#39;_n\)</span> crosses its opposite point <span class="math inline">\(Q\)</span> in the original clipp space, see the Q illustrated in the image. <img src="https://i.imgur.com/1hwILu2.png" alt="Q position" /> Then we can have the following equations:</p>
+<p><span class="math display">\[
+\left\{\begin{array}{ll}
+Q&#39;\cdot C_f&#39;=0
+\\
+C&#39;_f=M_4-C_n&#39;
+\\
+Q&#39;=M^{-1}Q
+\\ 
+Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))
+\end{array}\right.
+\]</span></p>
+<p><span class="math display">\[
+\Rightarrow 
+\left\{\begin{array}{ll}
+a=\frac{M_4\cdot Q&#39;}{C_n&#39;\cdot Q&#39;}C_n&#39;
+\\
+Q&#39;=M^{-1}Q
+\\ 
+Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))
+\\
+M_3 = aC_n&#39;
+\end{array}\right.
+\]</span></p>
+<h2 id="a-note-on-reversed-near-far-planes">A Note on Reversed Near Far Planes</h2>
+<p>It's not uncommon to use the <a target="_blank" rel="noopener" href="http://www.humus.name/index.php?page=Comments&amp;ID=255&amp;start=0">reversed Z trick</a> to gain more precision from the depth buffer to facilitate linear depth reconstruction. This trick simply swapped near and far planes in the projection matrix and use <em>GREATER</em> for depth test function. However, this trick introduces complexity in the equations above. One easy way to handle this is to apply a Z flipping matrix <span class="math inline">\(M_f\)</span> after applying the oblique clipping plane, where:</p>
+<p><span class="math display">\[M_f = \begin{bmatrix}
+1 &amp;  0&amp;  0&amp; 0\\ 
+0 &amp;  1&amp;  0&amp; 0\\ 
+0 &amp;  0&amp;  -1&amp; 1\\ 
+0 &amp;  0&amp;  1&amp; 1
+\end{bmatrix}\]</span></p>
+<h2 id="further-discussions-on-view-space-z-reconstruction">Further discussions on view space z reconstruction</h2>
+<p>In the traditional projection matrix, depth can be reconstructed by simply knowing the depth at that pixel position, this is because the first two elements in the 3rd row(<span class="math inline">\(M_3\)</span>) are 0. When <span class="math inline">\(w&#39;=1\)</span>, depth remapping can be simply written as a function of clip space depth <span class="math inline">\(z\)</span>: <span class="math display">\[z = \frac{M_{33}z&#39;+M_{34}}{-z&#39;}\rightarrow z&#39;=\frac{M_{34}}{M_{33}+z}\]</span></p>
+<p>However, when <span class="math inline">\(M_{31}\)</span> and <span class="math inline">\(M_{32}\)</span> are no longer 0, we'll need the clip space positions to reconstruct the depth. Given a point <span class="math inline">\(\mathbf{p}(x, y, z, 1)\)</span> in clip space, we can reconstruct the depth in view space <span class="math inline">\(z&#39;\)</span>:</p>
+<p><span class="math display">\[
+\left\{\begin{array}{ll}
+x&#39;=\frac{x}{M_{11}}
+\\
+y&#39; = \frac{y}{M_{22}}
+\\ 
+z=\frac{\mathbf{M_3}\cdot \mathbf{p&#39;}}{-z&#39;}
+\end{array}\right.
+\Rightarrow z&#39;=-\frac{\frac{M_{31}}{M_{11}}x+\frac{M_{32}}{M_{22}}y+M_{34}}{M_{33}+z}
+\]</span></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/blog/tags/graphics-rendering-clipping-plane/" rel="tag"># graphics, rendering, clipping plane</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/blog/2020/08/13/vulkan-multiview/" rel="prev" title="Render to CubeMap with Vulkan Multiview">
+      <i class="fa fa-chevron-left"></i> Render to CubeMap with Vulkan Multiview
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/blog/2022/05/22/vulkan-imgui-image/" rel="next" title="Integrating ImGui Image Display Widget in Muyo Vulkan Renderer">
+      Integrating ImGui Image Display Widget in Muyo Vulkan Renderer <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#oblique-clipping-plane"><span class="nav-number">1.</span> <span class="nav-text">Oblique Clipping Plane</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#a-note-on-reversed-near-far-planes"><span class="nav-number">2.</span> <span class="nav-text">A Note on Reversed Near Far Planes</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#further-discussions-on-view-space-z-reconstruction"><span class="nav-number">3.</span> <span class="nav-text">Further discussions on view space z reconstruction</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Q Gu</p>
+  <div class="site-description" itemprop="description">Ideas are mine and mine only</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/blog/archives/">
+        
+          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">categories</span>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">tags</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Q Gu</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/blog/lib/anime.min.js"></script>
+  <script src="/blog/lib/velocity/velocity.min.js"></script>
+  <script src="/blog/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/blog/js/utils.js"></script>
+
+<script src="/blog/js/motion.js"></script>
+
+
+<script src="/blog/js/schemes/muse.js"></script>
+
+
+<script src="/blog/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+      
+
+<script>
+  if (typeof MathJax === 'undefined') {
+    window.MathJax = {
+      loader: {
+        source: {
+          '[tex]/amsCd': '[tex]/amscd',
+          '[tex]/AMScd': '[tex]/amscd'
+        }
+      },
+      tex: {
+        inlineMath: {'[+]': [['$', '$']]},
+        tags: 'ams'
+      },
+      options: {
+        renderActions: {
+          findScript: [10, doc => {
+            document.querySelectorAll('script[type^="math/tex"]').forEach(node => {
+              const display = !!node.type.match(/; *mode=display/);
+              const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+              const text = document.createTextNode('');
+              node.parentNode.replaceChild(text, node);
+              math.start = {node: text, delim: '', n: 0};
+              math.end = {node: text, delim: '', n: 0};
+              doc.math.push(math);
+            });
+          }, '', false],
+          insertedScript: [200, () => {
+            document.querySelectorAll('mjx-container').forEach(node => {
+              let target = node.parentNode;
+              if (target.nodeName.toLowerCase() === 'li') {
+                target.parentNode.classList.add('has-jax');
+              }
+            });
+          }, '', false]
+        }
+      }
+    };
+    (function () {
+      var script = document.createElement('script');
+      script.src = '//cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+      script.defer = true;
+      document.head.appendChild(script);
+    })();
+  } else {
+    MathJax.startup.document.state(0);
+    MathJax.texReset();
+    MathJax.typeset();
+  }
+</script>
+
+    
+
+  
+
+</body>
+</html>
