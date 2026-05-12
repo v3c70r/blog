@@ -20,16 +20,16 @@
     var CONFIG = {"hostname":"qgu.io","root":"/blog/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It’s especially useful in rasterizing mirrors.The paper by Eric Lengyel has discussed the derivation of such clip">
+  <meta name="description" content="Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It&#39;s especially useful in rasterizing mirrors.  The paper by Eric Lengyel has discussed the derivation of suc">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Oblique Plane in Clip Space with Z in [0, 1.0] and reversed Z">
 <meta property="og:url" content="https://qgu.io/blog/2020/10/30/oblique-clipping-plane/index.html">
 <meta property="og:site_name" content="QGU">
-<meta property="og:description" content="Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It’s especially useful in rasterizing mirrors.The paper by Eric Lengyel has discussed the derivation of such clip">
+<meta property="og:description" content="Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It&#39;s especially useful in rasterizing mirrors.  The paper by Eric Lengyel has discussed the derivation of suc">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://i.imgur.com/1hwILu2.png">
 <meta property="article:published_time" content="2020-10-30T02:00:00.000Z">
-<meta property="article:modified_time" content="2026-05-12T06:01:35.098Z">
+<meta property="article:modified_time" content="2026-05-12T06:12:23.286Z">
 <meta property="article:author" content="Q Gu">
 <meta property="article:tag" content="graphics, rendering, clipping plane">
 <meta name="twitter:card" content="summary">
@@ -79,7 +79,11 @@
   </style>
 </noscript>
 
-</head>
+<!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --></head>
 
 <body itemscope itemtype="http://schema.org/WebPage">
   <div class="container use-motion">
@@ -184,7 +188,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-05-12 06:01:35" itemprop="dateModified" datetime="2026-05-12T06:01:35+00:00">2026-05-12</time>
+                <time title="Modified: 2026-05-12 06:12:23" itemprop="dateModified" datetime="2026-05-12T06:12:23+00:00">2026-05-12</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -207,31 +211,88 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <p>Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It’s especially useful in rasterizing mirrors.<br><a target="_blank" rel="noopener" href="http://www.terathon.com/lengyel/Lengyel-Oblique.pdf">The paper by Eric Lengyel</a> has discussed the derivation of such clipping plane in OpenGL NDC with $x, y, z \in [-1.0, 1.0]$. However in other APIs like D3D and Vulkan, the z lies in $z\in[0.0, 1.0]$ . This article discusses how we modify the original method proposed in the paper to achieve the same result.</p>
-<p>In addition, we’ll talk about how to handle the matrix with reversed Z techniques. </p>
-<p>In the following discussion, elements with <em>prime(‘)</em> are in view space, otherwise, they are in clip space. There are the notations we used in the following discussion:</p>
+        <p>Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It&#39;s especially useful in rasterizing mirrors. 
+<a target="_blank" rel="noopener" href="http://www.terathon.com/lengyel/Lengyel-Oblique.pdf">The paper by Eric Lengyel</a> has discussed the derivation of such clipping plane in OpenGL NDC with $x, y, z \in [-1.0, 1.0]$. However in other APIs like D3D and Vulkan, the z lies in $z\in[0.0, 1.0]$ . This article discusses how we modify the original method proposed in the paper to achieve the same result.</p>
+<p>In addition, we&#39;ll talk about how to handle the matrix with reversed Z techniques. </p>
+<p>In the following discussion, elements with <em>prime(&#39;)</em> are in view space, otherwise, they are in clip space. There are the notations we used in the following discussion:</p>
 <ul>
-<li>$C_n$: Near clipping plane in clip space, $C_n’$ is the clipping plane in view space.</li>
-<li>$C_f$: Far clipping plane in clip space, $C_f’$ is the far clipping plane in view space.</li>
+<li>$C_n$: Near clipping plane in clip space, $C_n&#39;$ is the clipping plane in view space.</li>
+<li>$C_f$: Far clipping plane in clip space, $C_f&#39;$ is the far clipping plane in view space.</li>
 <li>$M$: Projection matrix where $M_n$  denotes the <em>n</em>th row , i.e.:</li>
 </ul>
-<p>$$M = \begin{pmatrix}<br>M_1\<br>M_2\<br>M_3\<br>M_4<br>\end{pmatrix}$$</p>
+<p>$$M = \begin{pmatrix}
+M_1\ 
+M_2\ 
+M_3\ 
+M_4
+\end{pmatrix}$$</p>
 <ul>
-<li>$Q$ denotes a point opposite to the near clipping plane. We’ll discuss it later.</li>
+<li>$Q$ denotes a point opposite to the near clipping plane. We&#39;ll discuss it later.</li>
 </ul>
 <h2 id="Oblique-Clipping-Plane"><a href="#Oblique-Clipping-Plane" class="headerlink" title="Oblique Clipping Plane"></a>Oblique Clipping Plane</h2><blockquote>
 <p>TL;DR</p>
-<p>Substitute the third row of projection $M_3$ with<br>$$M_3=\frac{M_4\cdot Q’}{C_n \cdot Q’}C_n’$$<br>where $Q’ = M^{-1}Q$ and $Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))$</p>
+<p>Substitute the third row of projection $M_3$ with 
+$$M_3=\frac{M_4\cdot Q&#39;}{C_n \cdot Q&#39;}C_n&#39;$$
+where $Q&#39; = M^{-1}Q$ and $Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))$</p>
 </blockquote>
-<p>Giving a normal $\mathbf{n}$ and a point $\mathbf{p}$, we can construct a plane $C=&lt;\mathbf{n}_x, \mathbf{n}_y, \mathbf{n}_z, -\mathbf{n}\cdot \mathbf{p}$&gt;.<br>Also, to transform a plane from view space to clip space, we need to apply the transpose of inverse of the matrix.<br>$$C = (M^{-1})^TC’$$<br>This gives us the transformation of a plane from clip space to view space:<br>$$C’ = M^TC$$<br>Picking a point $\mathbf{p_n}=(0, 0, 0)$ and normal $\mathbf{n_n}=(0, 0, 1)$on the near plane in clip space, we can have near clipping plane:<br>$$C_n=&lt;0, 0, 1, 0&gt;$$<br>The transformation of the plane from clip space to view space:<br>$$C_n’ = M^TC_n=(M_1, M_2, M_3, M4)(0, 0, 1, 0)=M_3$$</p>
-<p>Similarly, picking a point $\mathbf{p_f}=(0, 0, 1)$ and normal $\mathbf{n_f}=(0, 0, -1)$ on the far clipping plane, we have:<br>$$C_f=&lt;0, 0, -1, 1&gt;$$<br>$$C_f’ = M^TC_f=M_4-M_3=M_4-C_n’$$<br>As discussed in the original paper, we want to find a scale factor $a$ that makes far plane $C’_f = M_4 - aC’_n$ crosses its opposite point $Q$ in the original clipp space, see the Q illustrated in the image.<br><img src="https://i.imgur.com/1hwILu2.png" alt="Q position"><br>Then we can have the following equations:</p>
-<p>$$<br>\left{\begin{array}{ll}<br>Q’\cdot C_f’=0<br>\<br>C’_f=M_4-C_n’<br>\<br>Q’=M^{-1}Q<br>\<br>Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))<br>\end{array}\right.<br>$$</p>
-<p>$$<br>\Rightarrow<br>\left{\begin{array}{ll}<br>a=\frac{M_4\cdot Q’}{C_n’\cdot Q’}C_n’<br>\<br>Q’=M^{-1}Q<br>\<br>Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))<br>\<br>M_3 = aC_n’<br>\end{array}\right.<br>$$</p>
-<h2 id="A-Note-on-Reversed-Near-Far-Planes"><a href="#A-Note-on-Reversed-Near-Far-Planes" class="headerlink" title="A Note on Reversed Near Far Planes"></a>A Note on Reversed Near Far Planes</h2><p>It’s not uncommon to use the <a target="_blank" rel="noopener" href="http://www.humus.name/index.php?page=Comments&ID=255&start=0">reversed Z trick</a> to gain more precision from the depth buffer to facilitate linear depth reconstruction. This trick simply swapped near and far planes in the projection matrix and use <em>GREATER</em> for depth test function.  However, this trick introduces complexity in the equations above. One easy way to handle this is to apply a Z flipping matrix $M_f$ after applying the oblique clipping plane, where:</p>
-<p>$$M_f = \begin{bmatrix}<br>1 &amp;  0&amp;  0&amp; 0\<br>0 &amp;  1&amp;  0&amp; 0\<br>0 &amp;  0&amp;  -1&amp; 1\<br>0 &amp;  0&amp;  1&amp; 1<br>\end{bmatrix}$$</p>
-<h2 id="Further-discussions-on-view-space-z-reconstruction"><a href="#Further-discussions-on-view-space-z-reconstruction" class="headerlink" title="Further discussions on view space z reconstruction"></a>Further discussions on view space z reconstruction</h2><p>In the traditional projection matrix, depth can be reconstructed by simply knowing the depth at that pixel position, this is because the first two elements in the 3rd row($M_3$) are 0. When $w’=1$, depth remapping can be simply written as a function of clip space depth $z$:<br>$$z = \frac{M_{33}z’+M_{34}}{-z’}\rightarrow z’=\frac{M_{34}}{M_{33}+z}$$</p>
-<p>However, when $M_{31}$ and $M_{32}$ are no longer 0, we’ll need the clip space positions to reconstruct the depth. Given a point $\mathbf{p}(x, y, z, 1)$ in clip space, we can reconstruct the depth in view space $z’$:</p>
-<p>$$<br>\left{\begin{array}{ll}<br>x’=\frac{x}{M_{11}}<br>\<br>y’ = \frac{y}{M_{22}}<br>\<br>z=\frac{\mathbf{M_3}\cdot \mathbf{p’}}{-z’}<br>\end{array}\right.<br>\Rightarrow z’=-\frac{\frac{M_{31}}{M_{11}}x+\frac{M_{32}}{M_{22}}y+M_{34}}{M_{33}+z}<br>$$</p>
+<p>Giving a normal $\mathbf{n}$ and a point $\mathbf{p}$, we can construct a plane $C=&lt;\mathbf{n}_x, \mathbf{n}_y, \mathbf{n}_z, -\mathbf{n}\cdot \mathbf{p}$&gt;.
+Also, to transform a plane from view space to clip space, we need to apply the transpose of inverse of the matrix. 
+$$C = (M^{-1})^TC&#39;$$
+This gives us the transformation of a plane from clip space to view space:
+$$C&#39; = M^TC$$
+Picking a point $\mathbf{p_n}=(0, 0, 0)$ and normal $\mathbf{n_n}=(0, 0, 1)$on the near plane in clip space, we can have near clipping plane:
+$$C_n=&lt;0, 0, 1, 0&gt;$$ 
+The transformation of the plane from clip space to view space:
+$$C_n&#39; = M^TC_n=(M_1, M_2, M_3, M4)(0, 0, 1, 0)=M_3$$</p>
+<p>Similarly, picking a point $\mathbf{p_f}=(0, 0, 1)$ and normal $\mathbf{n_f}=(0, 0, -1)$ on the far clipping plane, we have:
+$$C_f=&lt;0, 0, -1, 1&gt;$$ 
+$$C_f&#39; = M^TC_f=M_4-M_3=M_4-C_n&#39;$$
+As discussed in the original paper, we want to find a scale factor $a$ that makes far plane $C&#39;_f = M_4 - aC&#39;_n$ crosses its opposite point $Q$ in the original clipp space, see the Q illustrated in the image.
+<img src="https://i.imgur.com/1hwILu2.png" alt="Q position">
+Then we can have the following equations:</p>
+<p>$$
+\left{\begin{array}{ll}
+Q&#39;\cdot C_f&#39;=0
+\
+C&#39;_f=M_4-C_n&#39;
+\
+Q&#39;=M^{-1}Q
+\ 
+Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))
+\end{array}\right.
+$$</p>
+<p>$$
+\Rightarrow 
+\left{\begin{array}{ll}
+a=\frac{M_4\cdot Q&#39;}{C_n&#39;\cdot Q&#39;}C_n&#39;
+\
+Q&#39;=M^{-1}Q
+\ 
+Q=(sgn({C_n}_x), sgn({C_n}_y), 1, 1))
+\
+M_3 = aC_n&#39;
+\end{array}\right.
+$$</p>
+<h2 id="A-Note-on-Reversed-Near-Far-Planes"><a href="#A-Note-on-Reversed-Near-Far-Planes" class="headerlink" title="A Note on Reversed Near Far Planes"></a>A Note on Reversed Near Far Planes</h2><p>It&#39;s not uncommon to use the <a target="_blank" rel="noopener" href="http://www.humus.name/index.php?page=Comments&ID=255&start=0">reversed Z trick</a> to gain more precision from the depth buffer to facilitate linear depth reconstruction. This trick simply swapped near and far planes in the projection matrix and use <em>GREATER</em> for depth test function.  However, this trick introduces complexity in the equations above. One easy way to handle this is to apply a Z flipping matrix $M_f$ after applying the oblique clipping plane, where:</p>
+<p>$$M_f = \begin{bmatrix}
+1 &amp;  0&amp;  0&amp; 0\ 
+0 &amp;  1&amp;  0&amp; 0\ 
+0 &amp;  0&amp;  -1&amp; 1\ 
+0 &amp;  0&amp;  1&amp; 1
+\end{bmatrix}$$</p>
+<h2 id="Further-discussions-on-view-space-z-reconstruction"><a href="#Further-discussions-on-view-space-z-reconstruction" class="headerlink" title="Further discussions on view space z reconstruction"></a>Further discussions on view space z reconstruction</h2><p>In the traditional projection matrix, depth can be reconstructed by simply knowing the depth at that pixel position, this is because the first two elements in the 3rd row($M_3$) are 0. When $w&#39;=1$, depth remapping can be simply written as a function of clip space depth $z$:
+$$z = \frac{M_{33}z&#39;+M_{34}}{-z&#39;}\rightarrow z&#39;=\frac{M_{34}}{M_{33}+z}$$</p>
+<p>However, when $M_{31}$ and $M_{32}$ are no longer 0, we&#39;ll need the clip space positions to reconstruct the depth. Given a point $\mathbf{p}(x, y, z, 1)$ in clip space, we can reconstruct the depth in view space $z&#39;$:</p>
+<p>$$
+\left{\begin{array}{ll}
+x&#39;=\frac{x}{M_{11}}
+\
+y&#39; = \frac{y}{M_{22}}
+\ 
+z=\frac{\mathbf{M_3}\cdot \mathbf{p&#39;}}{-z&#39;}
+\end{array}\right.
+\Rightarrow z&#39;=-\frac{\frac{M_{31}}{M_{11}}x+\frac{M_{32}}{M_{22}}y+M_{34}}{M_{33}+z}
+$$</p>
 
     </div>
 
