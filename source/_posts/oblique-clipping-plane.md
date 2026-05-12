@@ -7,6 +7,7 @@ category: graphics
 tags: graphics, rendering, clipping plane
 author: Qing Gu
 summary: Using oblique clipping plane in Vulkan and D3D clip space.
+mathjax: true
 ---
 
 Oblique clipping plane in frustum can be used to cull primitives with arbitrary plane. It's especially useful in rasterizing mirrors. 

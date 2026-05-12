@@ -2,6 +2,21 @@
 ## Docs: https://hexo.io/docs/configuration.html
 ## Source: https://github.com/hexojs/hexo/
 
+marked:
+  gfm: true
+  pedantic: false
+  breaks: false
+  smartLists: true
+  smartypants: false
+  modifyAnchors: 0
+  autolink: true
+  mangle: true
+  sanitizeUrl: false
+  dompurify: false
+  headerIds: true
+  anchorAlias: false
+  lazyload: false
+
 # Site
 title: QGU
 subtitle: 'Quantum Gravity Unitarity'
@@ -50,8 +65,10 @@ highlight:
   tab_replace: ''
   wrap: true
   hljs: false
+  include: false
+  exclude: []
 prismjs:
-  enable: false
+  enable: true
   preprocess: true
   line_number: true
   tab_replace: ''
