@@ -22,26 +22,7 @@ jobs:
         run: npm install
 
       - name: Configure MathJax
-        run: |
-          mkdir -p source/_data
-          cat > source/_data/head.swig << 'EOF'
-<script>
-  window.MathJax = {
-    tex: {
-      inlineMath: {'[+]': [['$', '$'], ['\\(', '\\)']]}
-    },
-    startup: {
-      pageReady: () => MathJax.startup.defaultPageReady()
-    }
-  };
-</script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
-EOF
-
-      - name: Enable MathJax in theme
-        run: |
-          sed -i 's/#head: source\/_data\/head.swig/head: source\/_data\/head.swig/' node_modules/hexo-theme-next/_config.yml
-          sed -i 's/    enable: false/    enable: true/' node_modules/hexo-theme-next/_config.yml
+        run: node .github/setup-mathjax.js
 
       - name: Generate Hexo site
         run: npm run build
