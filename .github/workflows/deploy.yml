@@ -18,19 +18,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install pandoc
-        run: sudo apt-get install -y pandoc
-
       - name: Install dependencies
-        run: |
-          npm install
-          npm install hexo-theme-next
-
-      - name: Configure theme
-        run: |
-          cp themes/next/_config.yml.bak themes/next/_config.yml 2>/dev/null || true
-          cp _config.yml _config.yml.bak 2>/dev/null || true
-        working-directory: .
+        run: npm install
 
       - name: Generate Hexo site
         run: npm run build
