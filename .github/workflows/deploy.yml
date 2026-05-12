@@ -15,9 +15,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Initialize submodules
-        run: git submodule update --init --recursive
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,11 +26,18 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Sync theme submodule
+        run: |
+          rm -rf themes/next
+          git submodule update --init --recursive
+
       - name: Generate Hexo site
         run: npm run build
+        env:
+          NODE_PATH: node_modules
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
