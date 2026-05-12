@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 console.log('Configuring MathJax...');
 
@@ -25,9 +26,16 @@ const themeConfigPath = 'node_modules/hexo-theme-next/_config.yml';
 let themeConfig = fs.readFileSync(themeConfigPath, 'utf8');
 
 themeConfig = themeConfig.replace(/#head: source\/_data\/head.swig/gi, 'head: source/_data/head.swig');
-themeConfig = themeConfig.replace(/enable: false/gi, 'enable: true');
+
+themeConfig = themeConfig.replace(/katex:\n    enable: true/gi, 'katex:\n    enable: false');
+themeConfig = themeConfig.replace(/related_posts:\n    enable: true/gi, 'related_posts:\n    enable: false');
 
 fs.writeFileSync(themeConfigPath, themeConfig);
-console.log('Updated theme config for MathJax');
+console.log('Updated theme config for MathJax and disabled katex/related_posts');
+
+try {
+  execSync('rm -rf node_modules/hexo-math', { stdio: 'ignore' });
+  console.log('Removed hexo-math package');
+} catch (e) {}
 
 console.log('MathJax configuration complete!');
