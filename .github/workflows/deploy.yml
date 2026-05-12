@@ -40,8 +40,8 @@ EOF
 
       - name: Enable MathJax in theme
         run: |
-          sed -i 's/#head: source/_data\/head.swig/head: source\/_data\/head.swig/' node_modules/hexo-theme-next/_config.yml
-          sed -i '/mathjax:/,/enable:/{s/enable: false/enable: true/}' node_modules/hexo-theme-next/_config.yml
+          sed -i 's/#head: source\/_data\/head.swig/head: source\/_data\/head.swig/' node_modules/hexo-theme-next/_config.yml
+          sed -i 's/    enable: false/    enable: true/' node_modules/hexo-theme-next/_config.yml
 
       - name: Generate Hexo site
         run: npm run build
