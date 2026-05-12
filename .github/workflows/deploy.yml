@@ -12,8 +12,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -24,17 +22,18 @@ jobs:
         run: sudo apt-get install -y pandoc
 
       - name: Install dependencies
-        run: npm install
-
-      - name: Sync theme submodule
         run: |
-          rm -rf themes/next
-          git submodule update --init --recursive
+          npm install
+          npm install hexo-theme-next
+
+      - name: Configure theme
+        run: |
+          cp themes/next/_config.yml.bak themes/next/_config.yml 2>/dev/null || true
+          cp _config.yml _config.yml.bak 2>/dev/null || true
+        working-directory: .
 
       - name: Generate Hexo site
         run: npm run build
-        env:
-          NODE_PATH: node_modules
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
