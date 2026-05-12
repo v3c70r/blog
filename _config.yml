@@ -101,7 +101,8 @@ theme: next
 
 # Deployment
 ## Docs: https://hexo.io/docs/one-command-deployment
-deploy:
-  type: git
-  repo: git@github.com:v3c70r/blog.git
-  branch: gh-pages
+## NOTE: deploy section removed - using GitHub Actions instead
+# deploy:
+#   type: git
+#   repo: git@github.com:v3c70r/blog.git
+#   branch: gh-pages

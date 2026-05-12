@@ -1,2 +1,6 @@
+.DS_Store
 *.swp
-blog
+node_modules/
+public/
+db.json
+.cache_data/

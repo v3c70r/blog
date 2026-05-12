@@ -1,0 +1,19 @@
+{
+  "name": "blog",
+  "version": "1.0.0",
+  "description": "QGU Blog powered by Hexo and NexT theme",
+  "private": true,
+  "scripts": {
+    "build": "hexo generate",
+    "clean": "hexo clean",
+    "deploy": "hexo deploy",
+    "server": "hexo server"
+  },
+  "dependencies": {
+    "hexo": "^6.3.0",
+    "hexo-deployer-git": "^3.0.0",
+    "hexo-renderer-marked": "^4.1.0",
+    "hexo-renderer-pandoc": "^0.4.0",
+    "hexo-theme-next": "^7.8.0"
+  }
+}
