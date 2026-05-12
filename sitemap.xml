@@ -2,15 +2,6 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
-    <loc>https://qgu.io/blog/2020/07/04/multilingual-pelican-cn/</loc>
-    
-    <lastmod>2026-05-12</lastmod>
-    
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  
-  <url>
     <loc>https://qgu.io/blog/2020/07/04/multilingual-pelican/</loc>
     
     <lastmod>2026-05-12</lastmod>
@@ -20,7 +11,7 @@
   </url>
   
   <url>
-    <loc>https://qgu.io/blog/2020/07/13/vim-vs-keybinding/</loc>
+    <loc>https://qgu.io/blog/2020/10/30/oblique-clipping-plane/</loc>
     
     <lastmod>2026-05-12</lastmod>
     
@@ -29,7 +20,7 @@
   </url>
   
   <url>
-    <loc>https://qgu.io/blog/2020/10/30/oblique-clipping-plane/</loc>
+    <loc>https://qgu.io/blog/2020/07/13/vim-vs-keybinding/</loc>
     
     <lastmod>2026-05-12</lastmod>
     
@@ -55,6 +46,15 @@
     <priority>0.6</priority>
   </url>
   
+  <url>
+    <loc>https://qgu.io/blog/2020/07/04/multilingual-pelican-cn/</loc>
+    
+    <lastmod>2026-05-12</lastmod>
+    
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
 
   <url>
     <loc>https://qgu.io/blog</loc>
@@ -72,14 +72,14 @@
   </url>
   
   <url>
-    <loc>https://qgu.io/blog/tags/vim-ctags-cscope-visual-assist-tool/</loc>
+    <loc>https://qgu.io/blog/tags/graphics-rendering-clipping-plane/</loc>
     <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>
   </url>
   
   <url>
-    <loc>https://qgu.io/blog/tags/graphics-rendering-clipping-plane/</loc>
+    <loc>https://qgu.io/blog/tags/vim-ctags-cscope-visual-assist-tool/</loc>
     <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>
@@ -109,14 +109,14 @@
   </url>
   
   <url>
-    <loc>https://qgu.io/blog/categories/vim/</loc>
+    <loc>https://qgu.io/blog/categories/graphics/</loc>
     <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>
   </url>
   
   <url>
-    <loc>https://qgu.io/blog/categories/graphics/</loc>
+    <loc>https://qgu.io/blog/categories/vim/</loc>
     <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>
