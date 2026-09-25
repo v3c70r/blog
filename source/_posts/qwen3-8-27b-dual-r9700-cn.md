@@ -11,34 +11,35 @@ summary: 在两张 Radeon AI PRO R9700 上使用 llama.cpp 和 ROCm 运行 Qwen3
 
 > 语言：[English](/blog/2026/09/22/qwen3-8-27b-dual-r9700/) | [Francais](/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/) | [中文](/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/)
 
-这只是我机器上的一个数据点，不是最终结论。下面是我实测出来的配置，以及每个选择背后的证据。如果你在同类硬件上跑同一个模型，这应该能帮你省下一个周末。
+**注意：** 以下数据仅源于我的个人测试环境，不代表最终结论。本文旨在分享我实测出的最优配置及其背后的技术支撑。如果你正计划在同类硬件上运行相同模型，这份实测指南将帮你节省大量的试错成本。
 
-**如果你只想要配置，读完这一节就可以停下，分割线之后是对比和推理过程。**
+**如果你只想快速获取配置，请直接阅读第一章节即可。分割线之后将深入探讨性能对比与技术推理。**
 
-## 硬件与模型
+## 硬件与模型概览
 
-- CPU：AMD EPYC 7302（16 核 / 32 线程）
-- 内存：125 GB
-- 2x Radeon AI PRO R9700（gfx1201，RDNA4），每张 32 GB，共 64 GB
-- 每张卡走 PCIe 5.0 x16，位于不同的 Root Complex
-- 内核 6.17，ROCm 7.14
-- llama.cpp 版本 `709fe755d`（build 11116）
+- **CPU：** AMD EPYC 7302（16 核 / 32 线程）
+- **内存：** 125 GB
+- **GPU：** 2x Radeon AI PRO R9700（gfx1201，RDNA4），每张 32 GB（共 64 GB）
+- **互连：** 每张卡连接至独立的 PCIe 5.0 x16 通道（位于不同的 Root Complex）
+- **软件环境：** 内核 6.17，ROCm 7.14
+- **推理框架：** llama.cpp 版本 `709fe755d`（build 11116）
 
-模型：`unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL`，29.3 GiB。元数据：64 层，`n_head=24`，`n_head_kv=4`，head dim 256，`n_ctx_train=262144`，无滑动窗口，带一个 MTP 头（`nextn_predict_layers=1`）。正是这个 MTP 头让投机解码在这里变得便宜。
+**目标模型：** `unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL`，模型大小 29.3 GiB。
+**模型元数据：** 64 层，`n_head=24`，`n_head_kv=4`，head dim 256，`n_ctx_train=262144`。模型支持滑动窗口并带有一个 MTP 头（`nextn_predict_layers=1`），这使得投机解码（Speculative Decoding）在这里非常高效。
 
-## 1. 内核：IOMMU passthrough
+## 1. 内核：IOMMU Passthrough
 
-在启动参数中加入 `amd_iommu=on iommu=pt` 然后重启：
+在启动参数中加入 `amd_iommu=on iommu=pt` 并重启：
 
-```
+```bash
 BOOT_IMAGE=... ro quiet splash amd_iommu=on iommu=pt
 ```
 
-只有用 RCCL（第 2 步）时才需要。没有它，RCCL 会警告多 GPU 系统可能挂起。
+*注：此步骤仅在后续使用 RCCL（第 2 步）时必需。若不配置，RCCL 会发出多 GPU 系统可能挂起的警告。*
 
-## 2. 编译带 RCCL 的 ROCm 版 llama.cpp
+## 2. 编译带 RCCL 支持的 ROCm 版 llama.cpp
 
-```sh
+```bash
 cmake -S . -B build-rocm \
   -DGGML_HIP=ON \
   -DAMDGPU_TARGETS=gfx1201 \
@@ -47,14 +48,13 @@ cmake -S . -B build-rocm \
 cmake --build build-rocm -j
 ```
 
-两点提醒，免得你白编译一次：
+**编译避坑指南：**
+- `GGML_HIP_ROCWMMA_FATTN`：当前版本不支持该选项，传参无效（Cache 中始终为 `UNINITIALIZED`）。
+- `GGML_HIP_MMQ_MFMA`：仅对 CDNA 架构有效。在 RDNA4 上无任何影响，gfx12 的 WMMA 代码会自动编译入库。
 
-- `GGML_HIP_ROCWMMA_FATTN` 在这个版本里并不存在。传了也没用（它在 cache 里始终是 `UNINITIALIZED`，而且 FA 路径里没有 rocWMMA 代码）。
-- `GGML_HIP_MMQ_MFMA` 只影响 CDNA。在 RDNA4 上没有任何效果。gfx12 的 WMMA 是自动编译进去的。
+## 3. 启动命令
 
-## 3. 启动
-
-```sh
+```bash
 NCCL_PROTO=Simple GGML_CUDA_ALLREDUCE=nccl \
   ./llama-server \
     -m Qwen3.8-27B-UD-Q8_K_XL.gguf \
@@ -67,14 +67,14 @@ NCCL_PROTO=Simple GGML_CUDA_ALLREDUCE=nccl \
     --host 0.0.0.0 --port 8080
 ```
 
-如果你用 router/preset 模式，等价的 `config.ini`：
+如果你更倾向于使用 Router/Preset 模式，对应的 `config.ini` 配置如下：
 
 ```ini
 [*]
 host = 0.0.0.0
 port = 8080
 
-[qwen3-27b]
++[qwen3-27b]
 hf = unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL
 ngl = 99
 flash-attn = true
@@ -92,125 +92,116 @@ presence-penalty = 0.0
 repeat-penalty = 1.0
 ```
 
-## 预期性能
+## 预期性能表现
 
-在这台机器上，约 72k token 的 prompt：
+在当前配置下，针对约 72k token 的 Prompt 测试结果：
 
-- Prefill：约 1450 t/s
-- 带 MTP 的解码：约 45 t/s，具体取决于文本的可预测程度
-- 每次 target forward：短上下文约 53-55 ms，72k 上下文约 62 ms
-
-如果接受率高（代码、结构化输出），你会看到接近 60 t/s。如果接受率低（创意写作），接近 40。这不是 bug，而是投机解码的固有行为。
+- **Prefill 速度：** 约 1450 t/s
+- **带 MTP 的解码速度：** 约 45 t/s（高度依赖文本的可预测性）
+- **单次 Target Forward 耗时：** 短上下文约 53-55 ms，72k 上下文约 62 ms
+- **性能波动：** 逻辑性强的文本（如代码、结构化输出）接受率高，速度可接近 60 t/s；创意类文本接受率低，速度接近 40 t/s。这种波动属于投机解码的固有特性。
 
 ---
 
-以下是证据。如果你只想要配置，可以停在这里。
+*以下为技术细节对比与推理过程。*
 
-## 测量方法
+## 测量方法论
 
-- 核心指标：**每次 target forward 的毫秒数**，其中 `forwards = 预测 token 数 - 被接受的 draft token 数`。原始 tokens/second 会被 MTP 接受率污染，而接受率随内容变化。毫秒/forward 不会。
-- 除非特别说明，所有数字都是单次运行。5% 以内的差异当作噪声。
-- 所有运行都使用 `-fa on`、tensor split、MTP `n-max=3`，模型同上。
+- **核心指标：** **每次 Target Forward 的耗时**。因为 MTP 的接受率会随内容变动，导致原始 tokens/s 波动剧烈。而耗时指标更能真实反映硬件能力。
+- **统计原则：** 所有数据均源于单次运行。5% 以内的波动视为环境噪声。
+- **一致性：** 所有测试均开启 `-fa on`、使用 tensor split、MTP `n-max=3`。
 
-## 发现 1：带 MTP 时，tensor split 快于 layer split。但一个天真的 benchmark 会得出相反结论。
+## 发现 1：Tensor Split 在带 MTP 时优于 Layer Split
 
-原始 `llama-bench`，不开投机解码：
+原始 `llama-bench`（不带投机解码）结果：
+| 分割模式 | tg128 速度 |
+|---|---|
+| Layer | 17.96 t/s |
+| Tensor | 16.89 t/s |
 
-| split | tg128 |
-|---|---:|
-| layer | 17.96 t/s |
-| tensor | 16.89 t/s |
+带 MTP 模式下（同一 Prompt，9 token 起步，生成 256）：
+| 分割模式 | 每次 Forward 耗时 | 生成速度 (tg) |
+|---|---|---|
+| Layer | 79.8 ms | 32.3 t/s |
+| Tensor | 54.4 ms | 48.8 t/s |
 
-带 MTP（同一 prompt，9 token 起步，生成 256）：
+**结论：** Tensor 分割在每次 Forward 中快了约 1.47 倍。原因是 MTP 将单次目标转发转化为一个小 Batch（1 个 Bonus token + 最多 3 个 Draft token），小 Batch 极利于多 GPU 并行，而单个 Token 会受限于 allreduce 的延迟。
 
-| split | 每次 forward 毫秒 | tg |
-|---|---:|---:|
-| layer | 79.8 | 32.3 t/s |
-| tensor | 54.4 | 48.8 t/s |
+**教训：** 务必使用你实际运行时的配置进行 Benchmark。单纯的 `llama-bench` 会误导你保留 Layer Split，实则会让你损失 1/3 的解码吞吐。
 
-这里 tensor 每次 forward 大约快 1.47 倍。原因是 MTP 把每次 target forward 变成一个小 batch（1 个 bonus token 加上最多 3 个 draft token）。小 batch 能在多 GPU 上并行；单个 token 不行，此时 allreduce 的延迟占主导。
+## 发现 2：硬件支持 P2P，但对当前 AllReduce 无效
 
-教训：一定要用你实际运行时的配置来 benchmark。一个不开投机解码的 benchmark 会告诉你保留 layer split，那会让你损失三分之一的解码吞吐。
+硬件端支持 P2P：`amdgpu.pcie_p2p=Y`，`hipDeviceCanAccessPeer` 双向返回 1。实测 Peer 直接拷贝约 27 GB/s，而经过 Host 中转约 14 GB/s。
 
-坦白：我最初的 MTP 对比忘了传 `-sm`，所以实际上是 layer 和它自己比，然后"验证"了 layer。传对参数，看日志，如果两个配置给出完全相同的数字，先怀疑你的测试脚本，再怀疑硬件。
+然而，llama.cpp 内置的双 GPU AllReduce 仍通过 Pinned Host Memory 中转。日志明确显示：
+`ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU`
 
-## 发现 2：这块硬件上 P2P 是真的，但对这个 allreduce 没用
+`GGML_CUDA_P2P=1` 仅开启了 Peer 权限，并没改变这一路径。实测开启 P2P 时为 59.8 ms/Forward，关闭时为 60.1 ms。纯属噪声。
 
-硬件是支持的：`amdgpu.pcie_p2p=Y`，`hipDeviceCanAccessPeer` 双向都返回 1，直接 peer copy 实测约 27 GB/s，而经过 host 的中转拷贝约 14 GB/s。
+## 发现 3：RCCL 显著提升 Prefill，但必须配合 `NCCL_PROTO=Simple`
 
-但是 llama.cpp 内置的双 GPU allreduce 是通过 pinned host memory 中转的。日志写得很清楚：
+在 Tensor Split + MTP 模式下，针对 ~35.6k token 的 Prompt：
+| AllReduce 类型 | Prefill 速度 | 每次 Forward 耗时 |
+|---|---|---|
+| 内部（Host 中转） | 1088 t/s | 59.0 ms |
+| RCCL（默认） | 1446 t/s | 64.2 ms |
+| RCCL (`NCCL_PROTO=Simple`) | 1444 t/s | 59.0 ms |
 
-```
-ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs,
-1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU
-```
+RCCL 提供了约 33% 的 Prefill 收益，但默认协议会让解码变慢 10%。使用 `Simple` 协议可以保留 Prefill 收益并消除解码惩罚。强行使用 `LL` 协议会导致 Prefill 崩溃（降至 641 t/s），切勿尝试。
 
-`GGML_CUDA_P2P=1` 只是开启 peer access，并不改变这条路径。在 tensor split + MTP 下实测：开 P2P 是 59.8 ms/forward，关掉是 60.1 ms。就是噪声。RCCL 也会自己选择传输方式，在那里关掉 P2P 数字也几乎不变。
+## 发现 4：`-ub 1024` 是“免费”的 Prefill 收益
 
-如果你用 RCCL 编译，那就做 `iommu=pt` 这一步。否则 P2P 这个设置可以完全忽略。
-
-## 发现 3：RCCL 大幅提升 prefill，但前提是 `NCCL_PROTO=Simple`
-
-这个最出乎意料。tensor split + MTP，约 35.6k token 的 prompt：
-
-| allreduce | prefill | 每次 forward 毫秒 |
-|---|---:|---:|
-| internal（host 中转） | 1088 t/s | 59.0 |
-| RCCL，默认 | 1446 t/s | 64.2 |
-| RCCL，`NCCL_PROTO=Simple` | 1444 t/s | 59.0 |
-
-RCCL 带来 +33% 的 prefill，但它默认选择的协议会让解码慢约 10%。`Simple` 保住 prefill 的收益，同时消掉解码的损失。强行只用 `LL` 会让 prefill 崩掉（641 t/s），千万别这么做。
-
-我也扫了显式列表（`Simple`、`LL128`、`Simple,LL128`、`Simple,LL,LL128`）。只要列表里包含 `Simple` 或 `LL128`，它们彼此之间都在约 1 ms 以内。选 `Simple` 就行。
-
-## 发现 4：`-ub 1024` 是白来的 prefill 收益
-
-72k 上下文，各跑两次：
-
-| ubatch | prefill |
-|---|---:|
+针对 72k 上下文（两次运行）：
+| ubatch | Prefill 速度 |
+|---|---|
 | 512 | 1331 / 1375 t/s |
 | 1024 | 1438 / 1492 t/s |
 
-约 +8%，解码不变。`-b 2048` 保持不变。
+收益约 +8%，而解码速度保持不变。`-b 2048` 参数依然适用。
 
-## 发现 5：在这里不要量化 KV cache
+## 发现 5：此场景下不要量化 KV Cache
 
-72k 上下文，RCCL + `Simple`：
+在 RCCL + `Simple` 模式下（72k 上下文）：
+| KV 类型 | 每次 Forward 耗时 |
+|---|---|
+| f16 | 63.2 ms |
+| q8_0 | 68.6 ms |
+| q4_0 | 67.8 ms |
 
-| KV 类型 | 每次 forward 毫秒 |
-|---|---:|
-| f16 | 63.2 |
-| q8_0 | 68.6 |
-| q4_0 | 67.8 |
+KV Cache 占用巨大（约 18 GB）。虽然想通过量化节省空间，但在 Flash Attention 架构下，反量化带来的内核开销超过了节省的带宽。保持 f16 性能最优。
 
-这里的 KV cache 很大：`2 * 64 层 * 1024 * 2 字节` = 每个 token 256 KB，72k 就是 18 GB。很想把它压小。但在 flash attention 下，attention kernel 里的反量化开销比省下的带宽更大。保持 f16。
+## 发现 6：`spec-draft-n-max` 取决于负载类型
 
-## 发现 6：`spec-draft-n-max` 取决于工作负载
+Tensor Split 模式，生成 384 token：
+| `n-max` | 散文速度 | 散文接受率 | 代码速度 | 代码接受率 |
+|---|---|---|---|---|
+| 2 | 44.0 t/s | 59.0% | 50.0 t/s | 74.8% |
+| 3 | **48.7 t/s** | 54.4% | 58.3 t/s | 72.4% |
+| 4 | 42.9 t/s | 38.2% | **62.4 t/s** | 69.4% |
+| 5 | 46.7 t/s | 40.6% | 57.6 t/s | 55.5% |
 
-tensor split，生成 384 token：
+每增加一个 Draft token，每次 Forward 耗时约增加 5 ms。只有当 Draft token 被持续接受时，这才是划算的。散文在超过 3 个时可预测性大幅下降；代码则可以。建议混合流量使用 3，纯代码/结构化输出使用 4。
 
-| `n-max` | 散文 t/s | 散文接受率 | 代码 t/s | 代码接受率 |
-|---:|---:|---:|---:|---:|
-| 2 | 44.0 | 59.0% | 50.0 | 74.8% |
-| 3 | **48.7** | 54.4% | 58.3 | 72.4% |
-| 4 | 42.9 | 38.2% | **62.4** | 69.4% |
-| 5 | 46.7 | 40.6% | 57.6 | 55.5% |
-
-每多一个 draft token，每次 forward 大约多 5 ms。只有当这些 token 持续被接受时才划算。散文超过 3 就不够可预测了。代码可以。混合流量用 3，如果主要是代码或结构化输出就用 4。
-
-## 没有效果的东西
-
-- `-DGGML_HIP_ROCWMMA_FATTN=ON`：这个版本里没有这个选项。
-- `GGML_HIP_MMQ_MFMA=ON`：只对 CDNA 有效。
-- `GGML_CUDA_P2P=1`：两种 allreduce 下都没有可测量的效果。
-- KV 量化：反而更慢。
+## 无效的优化项
+- `-DGGML_HIP_ROCWMMA_FATTN=ON`：此版本不支持。
+- `GGML_HIP_MMQ_MFMA=ON`：仅对 CDNA 架构有效。
+- `GGML_CUDA_P2P=1`：对当前 AllReduce 路径无显著影响。
+- KV 量化：反而降低了推理速度。
 
 ## 注意事项
+- **环境唯一性：** 数据仅代表我的机器，你的硬件/版本差异会导致数字不同（尤其是 Prefill）。
+- **MTP 变动性：** 接受率随内容剧烈变动，因此 tokens/s 不是稳定的衡量标准。
+- **量化差异：** 此测试基于 Q8 量化。Q4 量化虽然解码速度可能翻倍（受限于内存带宽），但会伴随明显的质量损失。
 
-- 一台机器、一个模型、一个版本。你的数字会不同，尤其是 prefill。
-- MTP 接受率取决于内容，所以不同 prompt 的 tokens/second 波动很大。
-- 大部分数字是单次运行。5% 以内的差异不显著。
-- 解码数字取决于模型的量化。这里是 Q8。同一个模型的 Q4 量化解码大约会快一倍，因为解码受内存带宽限制，代价是部分质量。
+---
 
-如果你复现了这些测试但数字不同，我很想听听。
+### 关键数据校验核对表
+- **硬件：** 2x Radeon AI PRO R9700 (gfx1201)
+- **模型：** Qwen3.8-27B-GGUF (UD-Q8_K_XL)
+- **内核参数：** `amd_iommu=on iommu=pt`
+- **编译参数：** `GGML_HIP=ON`, `GGML_HIP_RCCL=ON`, `AMDGPU_TARGETS=gfx1201`
+- **核心优化：** `NCCL_PROTO=Simple`, `GGML_CUDA_ALLREDUCE=nccl`
+- **MTP 配置：** `spec-type=draft-mtp`, `spec-draft-n-max=3`
+- **Tensor Split：** `tensor-split=1,1`
+- **KV 状态：** 保持 f16（不进行 KV 量化）
+- **测得性能：** Prefill ~1450 t/s | 解码 ~45-60 t/s (视内容而定)

@@ -6,39 +6,40 @@ lang: fr
 category: llm
 tags: llama.cpp, ROCm, R9700, Qwen3.8, LocalLLaMA
 author: Qing Gu
-summary: Configuration recommandee et mesures a l'appui pour faire tourner Qwen3.8-27B UD-Q8_K_XL sur deux Radeon AI PRO R9700 avec llama.cpp et ROCm.
+summary: Configuration recommandée et mesures à l'appui pour faire tourner Qwen3.8-27B UD-Q8_K_XL sur deux Radeon AI PRO R9700 avec llama.cpp et ROCm.
 ---
 
 > Langues : [English](/blog/2026/09/22/qwen3-8-27b-dual-r9700/) | [Francais](/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/) | [中文](/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/)
 
-Ceci est un point de donnee, pas une verite absolue. C'est une configuration que j'ai mesuree sur ma machine, avec les preuves derriere chaque choix. Si vous faites tourner le meme modele sur le meme type de materiel, cela devrait vous economiser un week-end.
+**Note :** Ceci est un point de donnée, pas une vérité absolue. C'est une configuration que j'ai mesurée sur ma machine, avec les preuves derrière chaque choix. Si vous faites tourner le même modèle sur le même type de matériel, cela devrait vous économiser un week-end de tests.
 
-**Si vous voulez seulement la configuration, lisez cette section et arretez-vous. La comparaison et le raisonnement viennent apres la ligne horizontale.**
+**Si vous voulez seulement la configuration, lisez cette section et arrêtez-vous. La comparaison et le raisonnement viennent après la ligne horizontale.**
 
-## Materiel et modele
+## Matériel et modèle
 
-- CPU : AMD EPYC 7302 (16 coeurs / 32 threads)
-- RAM : 125 Go
-- 2x Radeon AI PRO R9700 (gfx1201, RDNA4), 32 Go chacune, 64 Go au total
-- Chaque GPU sur PCIe 5.0 x16, sur des complexes racine differents
-- Noyau 6.17, ROCm 7.14
-- llama.cpp a `709fe755d` (build 11116)
+- **CPU :** AMD EPYC 7302 (16 coeurs / 32 threads)
+- **RAM :** 125 Go
+- **GPU :** 2x Radeon AI PRO R9700 (gfx1201, RDNA4), 32 Go chacune (64 Go au total)
+- **Interconnexion :** Chaque GPU sur PCIe 5.0 x16, sur des complexes racine différents
+- **Environnement logiciel :** Noyau 6.17, ROCm 7.14
+- **Framework d'inférence :** llama.cpp à la version `709fe755d` (build 11116)
 
-Modele : `unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL`, 29,3 Gio. Metadonnees : 64 couches, `n_head=24`, `n_head_kv=4`, dimension de tete 256, `n_ctx_train=262144`, pas de fenetre glissante, et une tete MTP (`nextn_predict_layers=1`). Cette tete MTP est ce qui rend le decodage speculatif peu couteux ici.
+**Modèle cible :** `unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL`, taille 29,3 Gio.
+**Métadonnées :** 64 couches, `n_head=24`, `n_head_kv=4`, dimension de tête 256, `n_ctx_train=262144`. Le modèle supporte pas de fenêtre glissante et inclut une tête MTP (`nextn_predict_layers=1`), ce qui rend le décodage spéculatif très efficace ici.
 
 ## 1. Noyau : passthrough IOMMU
 
-Ajoutez `amd_iommu=on iommu=pt` a la ligne de commande du noyau, puis redemarrez :
+Ajoutez `amd_iommu=on iommu=pt` à la ligne de commande du noyau, puis redémarrez :
 
-```
+```bash
 BOOT_IMAGE=... ro quiet splash amd_iommu=on iommu=pt
 ```
 
-Vous n'en avez besoin que pour RCCL (etape 2). Sans cela, RCCL avertit d'un risque de blocage sur les systemes multi-GPU.
+*Note : Vous n'en avez besoin que pour RCCL (étape 2). Sans cela, RCCL avertit d'un risque de blocage sur les systèmes multi-GPU.*
 
 ## 2. Compiler llama.cpp pour ROCm avec RCCL
 
-```sh
+```bash
 cmake -S . -B build-rocm \
   -DGGML_HIP=ON \
   -DAMDGPU_TARGETS=gfx1201 \
@@ -47,14 +48,13 @@ cmake -S . -B build-rocm \
 cmake --build build-rocm -j
 ```
 
-Deux remarques pour ne pas gacher une recompilation :
+**Conseils de compilation pour éviter les erreurs :**
+- `GGML_HIP_ROCWMMA_FATTN` : Cette option n'existe pas dans cette révision. La passer ne fait rien (elle reste `UNINITIALIZED` dans le cache).
+- `GGML_HIP_MMQ_MFMA` : Ne concerne que CDNA. Sur RDNA4, c'est sans effet ; le WMMA de gfx12 est compilé automatiquement.
 
-- `GGML_HIP_ROCWMMA_FATTN` n'existe pas dans cette revision. Le passer ne fait rien (il reste `UNINITIALIZED` dans le cache, et il n'y a pas de code rocWMMA dans le chemin FA).
-- `GGML_HIP_MMQ_MFMA` ne concerne que CDNA. Sur RDNA4 c'est sans effet. Le WMMA gfx12 est compile automatiquement.
+## 3. Lancer l'exécution
 
-## 3. Lancer
-
-```sh
+```bash
 NCCL_PROTO=Simple GGML_CUDA_ALLREDUCE=nccl \
   ./llama-server \
     -m Qwen3.8-27B-UD-Q8_K_XL.gguf \
@@ -67,14 +67,14 @@ NCCL_PROTO=Simple GGML_CUDA_ALLREDUCE=nccl \
     --host 0.0.0.0 --port 8080
 ```
 
-La meme chose en `config.ini`, si vous utilisez le mode routeur :
+La même chose via un fichier `config.ini`, si vous utilisez le mode routeur :
 
 ```ini
 [*]
 host = 0.0.0.0
 port = 8080
 
-[qwen3-27b]
++[qwen3-27b]
 hf = unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL
 ngl = 99
 flash-attn = true
@@ -92,125 +92,116 @@ presence-penalty = 0.0
 repeat-penalty = 1.0
 ```
 
-## A quoi s'attendre
+## À quoi s'attendre
 
 Sur un prompt d'environ 72k tokens sur cette machine :
 
-- Prefill : environ 1450 t/s
-- Decodage avec MTP : environ 45 t/s, tres dependant de la predictibilite du texte
-- Par passe cible : environ 53-55 ms en contexte court, environ 62 ms a 72k de contexte
-
-Si le taux d'acceptation est eleve (code, sortie structuree), vous verrez plutot 60 t/s. S'il est faible (prose creative), plutot 40. Ce n'est pas un bug, c'est le comportement du decodage speculatif.
+- **Vitesse de Prefill :** environ 1450 t/s
+- **Décodage avec MTP :** environ 45 t/s (très dépendant de la prévisibilité du texte)
+- **Temps par passe cible :** environ 53-55 ms en contexte court, environ 62 ms à 72k de contexte
+- **Variabilité :** Une acceptation élevée (code, sortie structurée) peut atteindre près de 60 t/s ; une acceptation faible (prose créative) avoisine les 40 t/s. Cette fluctuation est inhérente au décodage spéculatif.
 
 ---
 
-Tout ce qui suit est la preuve. Arretez-vous ici si vous ne voulez que la configuration.
+*Tout ce qui suit est la preuve. Arrêtez-vous ici si vous voulez seulement la configuration.*
 
-## Methode de mesure
+## Méthodologie de mesure
 
-- Metrique de reference : **millisecondes par passe cible**, ou `passes = tokens_predits - tokens_brouillon_acceptes`. Le tokens/seconde brut est fausse par le taux d'acceptation du MTP, qui depend du contenu. Les millisecondes par passe, non.
-- Sauf mention contraire, les chiffres viennent d'une seule execution. Considerez les petits ecarts (moins de 5 %) comme du bruit.
-- Toutes les executions utilisent `-fa on`, le split tensor et MTP `n-max=3`, sur le modele ci-dessus.
+- **Indicateur de référence :** **Millisecondes par passe cible**, où `passes = tokens_prédits - tokens_brouillon_acceptés`. Le tokens/seconde brut est faussé par le taux d'acceptation du MTP. Les millisecondes par passe reflètent mieux la capacité matérielle.
+- **Principes statistiques :** Toutes les données proviennent d'exécutions uniques. Considérez les écarts inférieurs à 5 % comme du bruit.
+- **Cohérence :** Toutes les mesures utilisent `-fa on`, le split tensor et MTP `n-max=3` sur le modèle ci-dessus.
 
-## Constat 1 : avec MTP, le split tensor bat le split layer. Un benchmark naif dit le contraire.
+## Constat 1 : Le split Tensor bat le split Layer avec MTP
 
-`llama-bench` brut, sans decodage speculatif :
+Résultats de `llama-bench` brut (sans décodage spéculatif) :
+| Mode de split | Vitesse tg128 |
+|---|---|
+| Layer | 17,96 t/s |
+| Tensor | 16,89 t/s |
 
-| split | tg128 |
-|---|---:|
-| layer | 17,96 t/s |
-| tensor | 16,89 t/s |
+Avec MTP (même prompt, départ à 9 tokens, 256 générés) :
+| Mode de split | ms par passe cible | Vitesse gén. (tg) |
+|---|---|---|
+| Layer | 79,8 ms | 32,3 t/s |
+| Tensor | 54,4 ms | 48,8 t/s |
 
-Avec MTP (meme prompt, depart a 9 tokens, 256 generes) :
+**Conclusion :** Le split Tensor est environ 1,47x plus rapide par passe ici. La raison est que MTP transforme chaque passe cible en un petit lot (1 token bonus + jusqu'à 3 tokens brouillons). Un petit lot se parallélise sur les GPU, alors qu'un seul token est limité par la latence de l'allreduce.
 
-| split | ms par passe cible | tg |
-|---|---:|---:|
-| layer | 79,8 | 32,3 t/s |
-| tensor | 54,4 | 48,8 t/s |
+**Leçon :** Mesurez toujours avec la configuration exacte que vous allez utiliser. Un benchmark sans décodage spéculatif vous aurait fait garder le split Layer, ce qui vous coûterait un tiers de votre débit de décodage.
 
-Le split tensor est environ 1,47x plus rapide par passe ici. La raison : MTP transforme chaque passe cible en un petit batch (1 token bonus plus jusqu'a 3 tokens brouillon). Un petit batch se parallelise sur les GPU ; un seul token non, et la latence de l'allreduce domine alors.
+## Constat 2 : Le P2P est réel sur ce matériel, mais sans effet sur cet AllReduce
 
-Lecon : mesurez avec l'environnement exact que vous utiliserez. Un benchmark sans decodage speculatif vous aurait dit de garder le split layer, ce qui vous couterait un tiers de votre debit de decodage.
+Le matériel supporte le P2P : `amdgpu.pcie_p2p=Y`, `hipDeviceCanAccessPeer` renvoie 1 dans les deux sens. Copie directe entre pairs mesurée à ~27 Go/s contre ~14 Go/s via l'hôte.
 
-Confession : ma premiere comparaison MTP avait oublie de passer `-sm`, donc elle comparait layer avec lui-meme et "confirmait" layer. Passez les flags, verifiez le log, et si deux configurations donnent des chiffres identiques, soupconnez votre harnais avant de soupconner le materiel.
+Cependant, l'AllReduce 2-GPU intégré à llama.cpp passe par de la mémoire hôte épinglée. Le log le confirme directement :
+`ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU`
 
-## Constat 2 : le P2P est bien reel sur ce materiel, mais sans effet sur cet allreduce
+`GGML_CUDA_P2P=1` active la permission, mais ne change pas ce chemin. Mesuré avec split Tensor + MTP : 59,8 ms par passe avec P2P, 60,1 ms sans. Bruit pur.
 
-Le materiel le supporte : `amdgpu.pcie_p2p=Y`, `hipDeviceCanAccessPeer` renvoie 1 dans les deux sens, et une copie directe entre pairs mesure environ 27 Go/s contre environ 14 Go/s pour une copie passee par l'hote.
+## Constat 3 : RCCL booste le Prefill, mais nécessite `NCCL_PROTO=Simple`
 
-Mais l'allreduce 2 GPU integre a llama.cpp passe par de la memoire hote epinglee. Le log le dit :
+En mode Tensor Split + MTP, pour un prompt de ~35,6k tokens :
+| Type AllReduce | Vitesse Prefill | ms par passe cible |
+|---|---|---|
+| Interne (staging hôte) | 1088 t/s | 59,0 ms |
+| RCCL (défaut) | 1446 t/s | 64,2 ms |
+| RCCL (`NCCL_PROTO=Simple`) | 1444 t/s | 59,0 ms |
 
-```
-ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs,
-1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU
-```
+RCCL offre un gain de Prefill de ~33 %, mais son protocole par défaut coûte environ 10 % en décodage. `Simple` préserve le gain de Prefill et élimine la pénalité de décodage. Forcer `LL` seul est catastrophique pour le Prefill (chute à 641 t/s), ne le faites pas.
 
-`GGML_CUDA_P2P=1` active l'acces pair, mais ne change pas ce chemin. Mesure avec split tensor + MTP : 59,8 ms par passe avec P2P, 60,1 ms sans. Du bruit. RCCL choisit aussi son propre transport, et y desactiver le P2P ne change presque rien.
+## Constat 4 : `-ub 1024` est un gain de Prefill "gratuit"
 
-Si vous compilez avec RCCL, faites le changement `iommu=pt`. Sinon, le P2P est un reglage que vous pouvez ignorer.
-
-## Constat 3 : RCCL aide beaucoup le prefill, mais seulement avec `NCCL_PROTO=Simple`
-
-C'est celui qui m'a surpris. Split tensor + MTP, prompt d'environ 35,6k tokens :
-
-| allreduce | prefill | ms par passe cible |
-|---|---:|---:|
-| interne (staging hote) | 1088 t/s | 59,0 |
-| RCCL, defaut | 1446 t/s | 64,2 |
-| RCCL, `NCCL_PROTO=Simple` | 1444 t/s | 59,0 |
-
-RCCL donne +33 % de prefill, mais sa selection de protocole par defaut coute environ 10 % en decodage. `Simple` garde le gain de prefill et supprime la penalite de decodage. Forcer `LL` seul est catastrophique pour le prefill (641 t/s), ne le faites pas.
-
-J'ai aussi teste les listes explicites (`Simple`, `LL128`, `Simple,LL128`, `Simple,LL,LL128`). Des que la liste contient `Simple` ou `LL128`, elles sont toutes a environ 1 ms les unes des autres. Prenez `Simple` et passez a autre chose.
-
-## Constat 4 : `-ub 1024` est un gain de prefill gratuit
-
-A 72k de contexte, deux executions chacune :
-
-| ubatch | prefill |
-|---|---:|
+À 72k de contexte (deux exécutions chacune) :
+| ubatch | Vitesse Prefill |
+|---|---|
 | 512 | 1331 / 1375 t/s |
 | 1024 | 1438 / 1492 t/s |
 
-Environ +8 %, decodage inchange. `-b 2048` reste.
+Gain d'environ +8 %, débit de décodage inchangé. `-b 2048` reste optimal.
 
-## Constat 5 : ne quantifiez pas le cache KV ici
+## Constat 5 : Ne quantifiez pas le cache KV ici
 
-A 72k de contexte avec RCCL + `Simple` :
+À 72k de contexte avec RCCL + `Simple` :
+| Type KV | ms par passe cible |
+|---|---|
+| f16 | 63,2 ms |
+| q8_0 | 68,6 ms |
+| q4_0 | 67,8 ms |
 
-| type KV | ms par passe cible |
-|---|---:|
-| f16 | 63,2 |
-| q8_0 | 68,6 |
-| q4_0 | 67,8 |
+Le cache KV est massif ici (~18 Go). Bien qu'il soit tentant de le réduire, le coût de déquantification dans le noyau d'attention est supérieur à la bande passante gagnée avec le Flash Attention. Gardez f16 pour une performance optimale.
 
-Le cache KV est gros ici : `2 * 64 couches * 1024 * 2 octets` = 256 Ko par token, soit 18 Go a 72k. C'est tentant de le reduire. Mais avec le flash attention, le cout de dequantification dans le noyau d'attention est superieur a la bande passante economisee. Gardez f16.
+## Constat 6 : `spec-draft-n-max` dépend du type de charge
 
-## Constat 6 : `spec-draft-n-max` depend de la charge de travail
+Mode Tensor Split, 384 tokens générés :
+| `n-max` | Vitesse prose | Accept. prose | Vitesse code | Accept. code |
+|---|---|---|---|---|
+| 2 | 44,0 t/s | 59,0% | 50,0 t/s | 74,8% |
+| 3 | **48,7 t/s** | 54,4% | 58,3 t/s | 72,4% |
+| 4 | 42,9 t/s | 38,2% | **62,4 t/s** | 69,4% |
+| 5 | 46,7 t/s | 40,6% | 57,6 t/s | 55,5% |
 
-Split tensor, 384 tokens generes :
+Chaque jeton brouillon supplémentaire coûte environ 5 ms par passe. Cela n'en vaut la peine que si les jetons brouillons sont continuellement acceptés. La prose perd sa prévisibilité après 3 ; le code reste viable. Utilisez 3 pour un trafic mixte, et 4 si votre charge est principalement du code ou de la sortie structurée.
 
-| `n-max` | prose t/s | accept. prose | code t/s | accept. code |
-|---:|---:|---:|---:|---:|
-| 2 | 44,0 | 59,0% | 50,0 | 74,8% |
-| 3 | **48,7** | 54,4% | 58,3 | 72,4% |
-| 4 | 42,9 | 38,2% | **62,4** | 69,4% |
-| 5 | 46,7 | 40,6% | 57,6 | 55,5% |
-
-Chaque token brouillon supplementaire coute environ 5 ms par passe. Cela ne vaut le coup que si les tokens continuent d'etre acceptes. La prose n'est pas assez previsible au-dela de 3. Le code si. Gardez 3 pour un trafic mixte, utilisez 4 si votre charge est surtout du code ou de la sortie structuree.
-
-## Ce qui n'a rien change
-
-- `-DGGML_HIP_ROCWMMA_FATTN=ON` : option inexistante dans cette revision.
+## Optimisations inefficaces
+- `-DGGML_HIP_ROCWMMA_FATTN=ON` : Option inexistante dans cette révision.
 - `GGML_HIP_MMQ_MFMA=ON` : CDNA uniquement.
-- `GGML_CUDA_P2P=1` : aucun effet mesurable avec l'un ou l'autre allreduce.
-- Quantification du KV : activement plus lente.
+- `GGML_CUDA_P2P=1` : Aucun effet mesurable sur le chemin AllReduce actuel.
+- Quantification KV : Rend l'inférence activement plus lente.
 
-## Reserves
+## Réserves
+- **Spécificité de l'environnement :** Les données ne représentent que ma machine ; vos chiffres varieront en fonction de votre matériel/versions (surtout le Prefill).
+- **Variabilité du MTP :** Le taux d'acceptation fluctue selon le contenu, donc les tokens/seconde ne sont pas une mesure stable.
+- **Différences de quantification :** Ce test est basé sur Q8. Un quant Q4 du même modèle pourrait décoder environ deux fois plus vite (car le décodage est limité par la bande passante mémoire), au prix d'une perte de qualité notable.
 
-- Une machine, un modele, une compilation. Vos chiffres differeront, surtout le prefill.
-- L'acceptation MTP depend du contenu, donc les tokens/seconde varient beaucoup selon le prompt.
-- La plupart des chiffres sont des executions uniques. Les ecarts sous 5 % ne sont pas significatifs.
-- Les chiffres de decodage dependent de la quantification du modele. Ici c'est du Q8. Un quant Q4 du meme modele decodera environ deux fois plus vite, car le decodage est limite par la bande passante memoire, au prix d'une certaine perte de qualite.
+---
 
-Si vous reproduisez ceci et obtenez des chiffres differents, j'aimerais le savoir.
+### Liste de vérification des données clés
+- **Matériel :** 2x Radeon AI PRO R9700 (gfx1201)
+- **Modèle :** Qwen3.8-27B-GGUF (UD-Q8_K_XL)
+- **Paramètres noyau :** `amd_iommu=on iommu=pt`
+- **Paramètres compilation :** `GGML_HIP=ON`, `GGML_HIP_RCCL=ON`, `AMDGPU_TARGETS=gfx1201`
+- **Optimisations clés :** `NCCL_PROTO=Simple`, `GGML_CUDA_ALLREDUCE=nccl`
+- **Configuration MTP :** `spec-type=draft-mtp`, `spec-draft-n-max=3`
+- **Tensor Split :** `tensor-split=1,1`
+- **État KV :** Conserver f16 (Pas de quantification KV)
+- **Performances mesurées :** Prefill ~1450 t/s | Décodage ~45-60 t/s (selon le contenu)
