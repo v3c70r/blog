@@ -190,7 +190,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -486,6 +486,334 @@ cmake <span class="token parameter variable">--build</span> build-rocm <span cla
       
   
   
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/blog/images/avatar.gif">
+      <meta itemprop="name" content="Q Gu">
+      <meta itemprop="description" content="Ideas are mine and mine only">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="QGU">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/" class="post-title-link" itemprop="url">Running Qwen3.8-27B (UD-Q8_K_XL) on 2x Radeon AI PRO R9700</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2026-09-22 12:00:00" itemprop="dateCreated datePublished" datetime="2026-09-22T12:00:00+00:00">2026-09-22</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/blog/categories/llm/" itemprop="url" rel="index"><span itemprop="name">llm</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>Languages: <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/">English</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">Français</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">中文</a></p>
+</blockquote>
+<p><strong>Note:</strong> The following data points are derived solely from my personal test environment and do not represent universal conclusions. This post shares the optimal configurations I&#39;ve measured, along with the technical evidence supporting each choice. If you are planning to run the same model on similar hardware, this guide should save you significant trial-and-error time.</p>
+<p><strong>If you only want the configuration, read this section and stop. The comparison and reasoning are located after the horizontal rule.</strong></p>
+<h2 id="Hardware-and-Model-Overview"><a href="#Hardware-and-Model-Overview" class="headerlink" title="Hardware and Model Overview"></a>Hardware and Model Overview</h2><ul>
+<li><strong>CPU:</strong> AMD EPYC 7302 (16 cores / 32 threads)</li>
+<li><strong>RAM:</strong> 125 GB</li>
+<li><strong>GPU:</strong> 2x Radeon AI PRO R9700 (gfx1201, RDNA4), 32 GB each (64 GB total)</li>
+<li><strong>Interconnect:</strong> Each GPU connected to a dedicated PCIe 5.0 x16 lane (on different root complexes)</li>
+<li><strong>Software Environment:</strong> Kernel 6.17, ROCm 7.14</li>
+<li><strong>Inference Framework:</strong> llama.cpp at <code>709fe755d</code> (build 11116)</li>
+</ul>
+<p><strong>Target Model:</strong> <code>unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</code>, size 29.3 GiB.
+<strong>Metadata:</strong> 64 layers, <code>n_head=24</code>, <code>n_head_kv=4</code>, head dim 256, <code>n_ctx_train=262144</code>. The model has no sliding window and includes an MTP head (<code>nextn_predict_layers=1</code>), which makes speculative decoding highly efficient here.</p>
+<h2 id="1-Kernel-IOMMU-Passthrough"><a href="#1-Kernel-IOMMU-Passthrough" class="headerlink" title="1. Kernel: IOMMU Passthrough"></a>1. Kernel: IOMMU Passthrough</h2><p>Add <code>amd_iommu=on iommu=pt</code> to the kernel command line and reboot:</p>
+<pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">BOOT_IMAGE</span><span class="token operator">=</span><span class="token punctuation">..</span>. ro quiet splash <span class="token assign-left variable">amd_iommu</span><span class="token operator">=</span>on <span class="token assign-left variable">iommu</span><span class="token operator">=</span>pt<span aria-hidden="true" class="line-numbers-rows"><span></span></span></code></pre>
+
+<p><em>Note: This is only required for RCCL (step 2). Without it, RCCL will warn about potential hangs in multi-GPU systems.</em></p>
+<h2 id="2-Build-llama-cpp-for-ROCm-with-RCCL"><a href="#2-Build-llama-cpp-for-ROCm-with-RCCL" class="headerlink" title="2. Build llama.cpp for ROCm with RCCL"></a>2. Build llama.cpp for ROCm with RCCL</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash">cmake <span class="token parameter variable">-S</span> <span class="token builtin class-name">.</span> <span class="token parameter variable">-B</span> build-rocm <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DAMDGPU_TARGETS</span><span class="token operator">=</span>gfx1201 <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP_RCCL</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DCMAKE_BUILD_TYPE</span><span class="token operator">=</span>Release
+cmake <span class="token parameter variable">--build</span> build-rocm <span class="token parameter variable">-j</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p><strong>Build Notes to Avoid Redundant Compilations:</strong></p>
+<ul>
+<li><code>GGML_HIP_ROCWMMA_FATTN</code>: This option does not exist in the current revision. Passing it is a no-op (it remains <code>UNINITIALIZED</code> in the cache, and there is no rocWMMA code in the FA path).</li>
+<li><code>GGML_HIP_MMQ_MFMA</code>: Only affects CDNA. It is a no-op on RDNA4; gfx12 WMMA is automatically compiled in.</li>
+</ul>
+<h2 id="3-Execution"><a href="#3-Execution" class="headerlink" title="3. Execution"></a>3. Execution</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">NCCL_PROTO</span><span class="token operator">=</span>Simple <span class="token assign-left variable">GGML_CUDA_ALLREDUCE</span><span class="token operator">=</span>nccl <span class="token punctuation">\</span>
+  ./llama-server <span class="token punctuation">\</span>
+    <span class="token parameter variable">-m</span> Qwen3.8-27B-UD-Q8_K_XL.gguf <span class="token punctuation">\</span>
+    <span class="token parameter variable">-ngl</span> <span class="token number">99</span> <span class="token parameter variable">-fa</span> on <span class="token punctuation">\</span>
+    <span class="token parameter variable">-sm</span> tensor <span class="token parameter variable">-ts</span> <span class="token number">1,1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-b</span> <span class="token number">2048</span> <span class="token parameter variable">-ub</span> <span class="token number">1024</span> <span class="token punctuation">\</span>
+    --spec-type draft-mtp --spec-draft-n-max <span class="token number">3</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--temp</span> <span class="token number">1.0</span> --top-p <span class="token number">0.95</span> --top-k <span class="token number">20</span> --min-p <span class="token number">0</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-c</span> <span class="token number">98304</span> <span class="token parameter variable">-np</span> <span class="token number">1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--host</span> <span class="token number">0.0</span>.0.0 <span class="token parameter variable">--port</span> <span class="token number">8080</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p>The same can be achieved via <code>config.ini</code> in router/preset mode:</p>
+<pre class="line-numbers language-ini" data-language="ini"><code class="language-ini"><span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">*</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">host</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0.0.0</span>
+<span class="token key attr-name">port</span> <span class="token punctuation">=</span> <span class="token value attr-value">8080</span>
+
+<span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">qwen3-27b</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">hf</span> <span class="token punctuation">=</span> <span class="token value attr-value">unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</span>
+<span class="token key attr-name">ngl</span> <span class="token punctuation">=</span> <span class="token value attr-value">99</span>
+<span class="token key attr-name">flash-attn</span> <span class="token punctuation">=</span> <span class="token value attr-value">true</span>
+<span class="token key attr-name">spec-type</span> <span class="token punctuation">=</span> <span class="token value attr-value">draft-mtp</span>
+<span class="token key attr-name">spec-draft-n-max</span> <span class="token punctuation">=</span> <span class="token value attr-value">3</span>
+<span class="token key attr-name">split-mode</span> <span class="token punctuation">=</span> <span class="token value attr-value">tensor</span>
+<span class="token key attr-name">tensor-split</span> <span class="token punctuation">=</span> <span class="token value attr-value">1,1</span>
+<span class="token key attr-name">batch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">2048</span>
+<span class="token key attr-name">ubatch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">1024</span>
+<span class="token key attr-name">temp</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span>
+<span class="token key attr-name">top-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.95</span>
+<span class="token key attr-name">top-k</span> <span class="token punctuation">=</span> <span class="token value attr-value">20</span>
+<span class="token key attr-name">min-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">presence-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">repeat-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<h2 id="Expected-Performance"><a href="#Expected-Performance" class="headerlink" title="Expected Performance"></a>Expected Performance</h2><p>On this machine, for a ~72k-token prompt:</p>
+<ul>
+<li><strong>Prefill Speed:</strong> ~1450 t/s</li>
+<li><strong>Decode with MTP:</strong> ~45 t/s (highly dependent on how predictable the text is)</li>
+<li><strong>Time per Target Forward:</strong> ~53-55 ms at short context, ~62 ms at 72k context</li>
+<li><strong>Performance Variance:</strong> High acceptance (code, structured output) can reach nearly 60 t/s; low acceptance (creative prose) stays near 40 t/s. This fluctuation is an inherent characteristic of speculative decoding.</li>
+</ul>
+<hr>
+<p><em>The following sections contain technical evidence and reasoning.</em></p>
+<h2 id="Methodology"><a href="#Methodology" class="headerlink" title="Methodology"></a>Methodology</h2><ul>
+<li><strong>Metric of Record:</strong> <strong>Milliseconds per Target Forward</strong>, where <code>forwards = predicted_tokens - accepted_draft_tokens</code>. Plain tokens/second is contaminated by MTP acceptance variance. Milliseconds per forward provides a cleaner picture of hardware capability.</li>
+<li><strong>Statistical Principle:</strong> The data comes from single runs. Differences under 5% are treated as environmental noise.</li>
+<li><strong>Consistency:</strong> All tests used <code>-fa on</code>, tensor split, and MTP <code>n-max=3</code> on the aforementioned model.</li>
+</ul>
+<h2 id="Finding-1-Tensor-Split-Beats-Layer-Split-with-MTP"><a href="#Finding-1-Tensor-Split-Beats-Layer-Split-with-MTP" class="headerlink" title="Finding 1: Tensor Split Beats Layer Split with MTP"></a>Finding 1: Tensor Split Beats Layer Split with MTP</h2><p>Raw <code>llama-bench</code> (no speculative decoding) results:</p>
+<table>
+<thead>
+<tr>
+<th>Split Mode</th>
+<th>tg128 Speed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>17.96 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>16.89 t/s</td>
+</tr>
+</tbody></table>
+<p>With MTP (same prompt, 9-token start, 256 generated):</p>
+<table>
+<thead>
+<tr>
+<th>Split Mode</th>
+<th>ms per Target Forward</th>
+<th>Generation Speed (tg)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>79.8 ms</td>
+<td>32.3 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>54.4 ms</td>
+<td>48.8 t/s</td>
+</tr>
+</tbody></table>
+<p><strong>Conclusion:</strong> Tensor split is roughly 1.47x faster per forward here. This is because MTP turns each target forward into a small batch (1 bonus token + up to 3 draft tokens). Small batches parallelize across GPUs, whereas a single token is bottlenecked by allreduce latency.</p>
+<p><strong>Lesson:</strong> Always benchmark using the exact runtime configuration you intend to use. A naive <code>llama-bench</code> would incorrectly suggest keeping Layer Split, which would cost you a third of your decode throughput.</p>
+<p>A confession: my first MTP comparison forgot to pass <code>-sm</code>, so it compared layer to itself and &quot;confirmed&quot; layer. Pass the flags, check the log, and if two configs produce identical numbers, suspect your harness before you suspect the hardware.</p>
+<h2 id="Finding-2-Hardware-Supports-P2P-but-it-39-s-Irrelevant-to-this-AllReduce"><a href="#Finding-2-Hardware-Supports-P2P-but-it-39-s-Irrelevant-to-this-AllReduce" class="headerlink" title="Finding 2: Hardware Supports P2P, but it&#39;s Irrelevant to this AllReduce"></a>Finding 2: Hardware Supports P2P, but it&#39;s Irrelevant to this AllReduce</h2><p>The hardware supports it: <code>amdgpu.pcie_p2p=Y</code>, <code>hipDeviceCanAccessPeer</code> returns 1 both ways. Direct peer copy measures ~27 GB/s versus ~14 GB/s for host-staged copy.</p>
+<p>However, the built-in 2-GPU AllReduce in llama.cpp stages through Pinned Host Memory. The log confirms this:
+<code>ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU</code></p>
+<p><code>GGML_CUDA_P2P=1</code> enables peer access but does not alter the path. Measured with tensor split + MTP: 59.8 ms per forward with P2P on, 60.1 ms with it off. Pure noise. RCCL also picks its own transport, and disabling P2P there barely moves the numbers either.</p>
+<p>If you build with RCCL, do the <code>iommu=pt</code> change. Otherwise P2P is a setting you can ignore.</p>
+<h2 id="Finding-3-RCCL-Boosts-Prefill-but-Requires-NCCL-PROTO-Simple"><a href="#Finding-3-RCCL-Boosts-Prefill-but-Requires-NCCL-PROTO-Simple" class="headerlink" title="Finding 3: RCCL Boosts Prefill, but Requires NCCL_PROTO=Simple"></a>Finding 3: RCCL Boosts Prefill, but Requires <code>NCCL_PROTO=Simple</code></h2><p>In Tensor Split + MTP mode, for a ~35.6k-token prompt:</p>
+<table>
+<thead>
+<tr>
+<th>AllReduce Type</th>
+<th>Prefill Speed</th>
+<th>ms per Target Forward</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Internal (Host-staged)</td>
+<td>1088 t/s</td>
+<td>59.0 ms</td>
+</tr>
+<tr>
+<td>RCCL (Default)</td>
+<td>1446 t/s</td>
+<td>64.2 ms</td>
+</tr>
+<tr>
+<td>RCCL (<code>NCCL_PROTO=Simple</code>)</td>
+<td>1444 t/s</td>
+<td>59.0 ms</td>
+</tr>
+</tbody></table>
+<p>RCCL provides a ~33% prefill boost, but its default protocol selection costs about 10% on decode. Using <code>Simple</code> preserves the prefill gain while removing the decode penalty. Forcing <code>LL</code> alone is disastrous for prefill (drops to 641 t/s); avoid this.</p>
+<p>I also swept the explicit lists (<code>Simple</code>, <code>LL128</code>, <code>Simple,LL128</code>, <code>Simple,LL,LL128</code>). Once the list contains <code>Simple</code> or <code>LL128</code>, they are all within ~1 ms of each other. Pick <code>Simple</code> and move on.</p>
+<h2 id="Finding-4-ub-1024-is-a-quot-Free-quot-Prefill-Gain"><a href="#Finding-4-ub-1024-is-a-quot-Free-quot-Prefill-Gain" class="headerlink" title="Finding 4: -ub 1024 is a &quot;Free&quot; Prefill Gain"></a>Finding 4: <code>-ub 1024</code> is a &quot;Free&quot; Prefill Gain</h2><p>At 72k context (two runs each):</p>
+<table>
+<thead>
+<tr>
+<th>ubatch</th>
+<th>Prefill Speed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>512</td>
+<td>1331 / 1375 t/s</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>1438 / 1492 t/s</td>
+</tr>
+</tbody></table>
+<p>About +8% gain, while decode speed remains unchanged. <code>-b 2048</code> remains optimal.</p>
+<h2 id="Finding-5-Do-Not-Quantize-the-KV-Cache-here"><a href="#Finding-5-Do-Not-Quantize-the-KV-Cache-here" class="headerlink" title="Finding 5: Do Not Quantize the KV Cache here"></a>Finding 5: Do Not Quantize the KV Cache here</h2><p>At 72k context with RCCL + <code>Simple</code>:</p>
+<table>
+<thead>
+<tr>
+<th>KV Type</th>
+<th>ms per Target Forward</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>f16</td>
+<td>63.2 ms</td>
+</tr>
+<tr>
+<td>q8_0</td>
+<td>68.6 ms</td>
+</tr>
+<tr>
+<td>q4_0</td>
+<td>67.8 ms</td>
+</tr>
+</tbody></table>
+<p>The KV cache is substantial (~18 GB). While it is tempting to shrink it, the dequantization overhead in the attention kernel outweighs the bandwidth savings in a Flash Attention architecture. Keep f16 for optimal performance.</p>
+<h2 id="Finding-6-spec-draft-n-max-is-Workload-Dependent"><a href="#Finding-6-spec-draft-n-max-is-Workload-Dependent" class="headerlink" title="Finding 6: spec-draft-n-max is Workload-Dependent"></a>Finding 6: <code>spec-draft-n-max</code> is Workload-Dependent</h2><p>Tensor Split mode, 384 tokens generated:</p>
+<table>
+<thead>
+<tr>
+<th><code>n-max</code></th>
+<th>Prose Speed</th>
+<th>Prose Accept</th>
+<th>Code Speed</th>
+<th>Code Accept</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>2</td>
+<td>44.0 t/s</td>
+<td>59.0%</td>
+<td>50.0 t/s</td>
+<td>74.8%</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>48.7 t/s</strong></td>
+<td>54.4%</td>
+<td>58.3 t/s</td>
+<td>72.4%</td>
+</tr>
+<tr>
+<td>4</td>
+<td>42.9 t/s</td>
+<td>38.2%</td>
+<td><strong>62.4 t/s</strong></td>
+<td>69.4%</td>
+</tr>
+<tr>
+<td>5</td>
+<td>46.7 t/s</td>
+<td>40.6%</td>
+<td>57.6 t/s</td>
+<td>55.5%</td>
+</tr>
+</tbody></table>
+<p>Each extra draft token costs ~5 ms per forward. This only pays off if the draft tokens are consistently accepted. Prose predictability drops off significantly past 3; code remains viable. Use 3 for mixed traffic, and 4 for code-heavy or structured output workloads.</p>
+<h2 id="Ineffective-Optimizations"><a href="#Ineffective-Optimizations" class="headerlink" title="Ineffective Optimizations"></a>Ineffective Optimizations</h2><ul>
+<li><code>-DGGML_HIP_ROCWMMA_FATTN=ON</code>: Not a valid option in this revision.</li>
+<li><code>GGML_HIP_MMQ_MFMA=ON</code>: CDNA only.</li>
+<li><code>GGML_CUDA_P2P=1</code>: No measurable effect on the current AllReduce path.</li>
+<li>KV Quantization: Actively slower in this configuration.</li>
+</ul>
+<h2 id="Caveats"><a href="#Caveats" class="headerlink" title="Caveats"></a>Caveats</h2><ul>
+<li><strong>Environment Specificity:</strong> Data reflects my specific machine; numbers will differ based on your hardware/versions (especially Prefill).</li>
+<li><strong>MTP Variability:</strong> Acceptance rates fluctuate with content, so tokens/second is not a stable metric.</li>
+<li><strong>Quantization Differences:</strong> This test used Q8. A Q4 quant of the same model might decode roughly twice as fast (as it&#39;s memory-bandwidth bound), but at a noticeable quality cost.</li>
+</ul>
+<p>If you reproduce this and get different numbers, I would like to hear about it.</p>
+<hr>
+<h3 id="Key-Data-Checklist"><a href="#Key-Data-Checklist" class="headerlink" title="Key Data Checklist"></a>Key Data Checklist</h3><ul>
+<li><strong>Hardware:</strong> 2x Radeon AI PRO R9700 (gfx1201)</li>
+<li><strong>Model:</strong> Qwen3.8-27B-GGUF (UD-Q8_K_XL)</li>
+<li><strong>Kernel Params:</strong> <code>amd_iommu=on iommu=pt</code></li>
+<li><strong>Build Params:</strong> <code>GGML_HIP=ON</code>, <code>GGML_HIP_RCCL=ON</code>, <code>AMDGPU_TARGETS=gfx1201</code></li>
+<li><strong>Core Optimizations:</strong> <code>NCCL_PROTO=Simple</code>, <code>GGML_CUDA_ALLREDUCE=nccl</code></li>
+<li><strong>MTP Config:</strong> <code>spec-type=draft-mtp</code>, <code>spec-draft-n-max=3</code></li>
+<li><strong>Tensor Split:</strong> <code>split-mode=tensor</code>, <code>tensor-split=1,1</code></li>
+<li><strong>KV State:</strong> Keep f16 (No KV quantization)</li>
+<li><strong>Measured Performance:</strong> Prefill ~1450 t/s | Decode ~45-60 t/s (content dependent)</li>
+</ul>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="中">
     <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">
 
@@ -518,7 +846,7 @@ cmake <span class="token parameter variable">--build</span> build-rocm <span cla
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -815,334 +1143,6 @@ cmake <span class="token parameter variable">--build</span> build-rocm <span cla
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
-    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/blog/images/avatar.gif">
-      <meta itemprop="name" content="Q Gu">
-      <meta itemprop="description" content="Ideas are mine and mine only">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="QGU">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/" class="post-title-link" itemprop="url">Running Qwen3.8-27B (UD-Q8_K_XL) on 2x Radeon AI PRO R9700</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">Posted on</span>
-
-              <time title="Created: 2026-09-22 12:00:00" itemprop="dateCreated datePublished" datetime="2026-09-22T12:00:00+00:00">2026-09-22</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">In</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/blog/categories/llm/" itemprop="url" rel="index"><span itemprop="name">llm</span></a>
-                </span>
-            </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <blockquote>
-<p>Languages: <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/">English</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">Français</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">中文</a></p>
-</blockquote>
-<p><strong>Note:</strong> The following data points are derived solely from my personal test environment and do not represent universal conclusions. This post shares the optimal configurations I&#39;ve measured, along with the technical evidence supporting each choice. If you are planning to run the same model on similar hardware, this guide should save you significant trial-and-error time.</p>
-<p><strong>If you only want the configuration, read this section and stop. The comparison and reasoning are located after the horizontal rule.</strong></p>
-<h2 id="Hardware-and-Model-Overview"><a href="#Hardware-and-Model-Overview" class="headerlink" title="Hardware and Model Overview"></a>Hardware and Model Overview</h2><ul>
-<li><strong>CPU:</strong> AMD EPYC 7302 (16 cores / 32 threads)</li>
-<li><strong>RAM:</strong> 125 GB</li>
-<li><strong>GPU:</strong> 2x Radeon AI PRO R9700 (gfx1201, RDNA4), 32 GB each (64 GB total)</li>
-<li><strong>Interconnect:</strong> Each GPU connected to a dedicated PCIe 5.0 x16 lane (on different root complexes)</li>
-<li><strong>Software Environment:</strong> Kernel 6.17, ROCm 7.14</li>
-<li><strong>Inference Framework:</strong> llama.cpp at <code>709fe755d</code> (build 11116)</li>
-</ul>
-<p><strong>Target Model:</strong> <code>unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</code>, size 29.3 GiB.
-<strong>Metadata:</strong> 64 layers, <code>n_head=24</code>, <code>n_head_kv=4</code>, head dim 256, <code>n_ctx_train=262144</code>. The model has no sliding window and includes an MTP head (<code>nextn_predict_layers=1</code>), which makes speculative decoding highly efficient here.</p>
-<h2 id="1-Kernel-IOMMU-Passthrough"><a href="#1-Kernel-IOMMU-Passthrough" class="headerlink" title="1. Kernel: IOMMU Passthrough"></a>1. Kernel: IOMMU Passthrough</h2><p>Add <code>amd_iommu=on iommu=pt</code> to the kernel command line and reboot:</p>
-<pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">BOOT_IMAGE</span><span class="token operator">=</span><span class="token punctuation">..</span>. ro quiet splash <span class="token assign-left variable">amd_iommu</span><span class="token operator">=</span>on <span class="token assign-left variable">iommu</span><span class="token operator">=</span>pt<span aria-hidden="true" class="line-numbers-rows"><span></span></span></code></pre>
-
-<p><em>Note: This is only required for RCCL (step 2). Without it, RCCL will warn about potential hangs in multi-GPU systems.</em></p>
-<h2 id="2-Build-llama-cpp-for-ROCm-with-RCCL"><a href="#2-Build-llama-cpp-for-ROCm-with-RCCL" class="headerlink" title="2. Build llama.cpp for ROCm with RCCL"></a>2. Build llama.cpp for ROCm with RCCL</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash">cmake <span class="token parameter variable">-S</span> <span class="token builtin class-name">.</span> <span class="token parameter variable">-B</span> build-rocm <span class="token punctuation">\</span>
-  <span class="token parameter variable">-DGGML_HIP</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
-  <span class="token parameter variable">-DAMDGPU_TARGETS</span><span class="token operator">=</span>gfx1201 <span class="token punctuation">\</span>
-  <span class="token parameter variable">-DGGML_HIP_RCCL</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
-  <span class="token parameter variable">-DCMAKE_BUILD_TYPE</span><span class="token operator">=</span>Release
-cmake <span class="token parameter variable">--build</span> build-rocm <span class="token parameter variable">-j</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
-
-<p><strong>Build Notes to Avoid Redundant Compilations:</strong></p>
-<ul>
-<li><code>GGML_HIP_ROCWMMA_FATTN</code>: This option does not exist in the current revision. Passing it is a no-op (it remains <code>UNINITIALIZED</code> in the cache, and there is no rocWMMA code in the FA path).</li>
-<li><code>GGML_HIP_MMQ_MFMA</code>: Only affects CDNA. It is a no-op on RDNA4; gfx12 WMMA is automatically compiled in.</li>
-</ul>
-<h2 id="3-Execution"><a href="#3-Execution" class="headerlink" title="3. Execution"></a>3. Execution</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">NCCL_PROTO</span><span class="token operator">=</span>Simple <span class="token assign-left variable">GGML_CUDA_ALLREDUCE</span><span class="token operator">=</span>nccl <span class="token punctuation">\</span>
-  ./llama-server <span class="token punctuation">\</span>
-    <span class="token parameter variable">-m</span> Qwen3.8-27B-UD-Q8_K_XL.gguf <span class="token punctuation">\</span>
-    <span class="token parameter variable">-ngl</span> <span class="token number">99</span> <span class="token parameter variable">-fa</span> on <span class="token punctuation">\</span>
-    <span class="token parameter variable">-sm</span> tensor <span class="token parameter variable">-ts</span> <span class="token number">1,1</span> <span class="token punctuation">\</span>
-    <span class="token parameter variable">-b</span> <span class="token number">2048</span> <span class="token parameter variable">-ub</span> <span class="token number">1024</span> <span class="token punctuation">\</span>
-    --spec-type draft-mtp --spec-draft-n-max <span class="token number">3</span> <span class="token punctuation">\</span>
-    <span class="token parameter variable">--temp</span> <span class="token number">1.0</span> --top-p <span class="token number">0.95</span> --top-k <span class="token number">20</span> --min-p <span class="token number">0</span> <span class="token punctuation">\</span>
-    <span class="token parameter variable">-c</span> <span class="token number">98304</span> <span class="token parameter variable">-np</span> <span class="token number">1</span> <span class="token punctuation">\</span>
-    <span class="token parameter variable">--host</span> <span class="token number">0.0</span>.0.0 <span class="token parameter variable">--port</span> <span class="token number">8080</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
-
-<p>The same can be achieved via <code>config.ini</code> in router/preset mode:</p>
-<pre class="line-numbers language-ini" data-language="ini"><code class="language-ini"><span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">*</span><span class="token punctuation">]</span></span>
-<span class="token key attr-name">host</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0.0.0</span>
-<span class="token key attr-name">port</span> <span class="token punctuation">=</span> <span class="token value attr-value">8080</span>
-
-<span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">qwen3-27b</span><span class="token punctuation">]</span></span>
-<span class="token key attr-name">hf</span> <span class="token punctuation">=</span> <span class="token value attr-value">unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</span>
-<span class="token key attr-name">ngl</span> <span class="token punctuation">=</span> <span class="token value attr-value">99</span>
-<span class="token key attr-name">flash-attn</span> <span class="token punctuation">=</span> <span class="token value attr-value">true</span>
-<span class="token key attr-name">spec-type</span> <span class="token punctuation">=</span> <span class="token value attr-value">draft-mtp</span>
-<span class="token key attr-name">spec-draft-n-max</span> <span class="token punctuation">=</span> <span class="token value attr-value">3</span>
-<span class="token key attr-name">split-mode</span> <span class="token punctuation">=</span> <span class="token value attr-value">tensor</span>
-<span class="token key attr-name">tensor-split</span> <span class="token punctuation">=</span> <span class="token value attr-value">1,1</span>
-<span class="token key attr-name">batch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">2048</span>
-<span class="token key attr-name">ubatch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">1024</span>
-<span class="token key attr-name">temp</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span>
-<span class="token key attr-name">top-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.95</span>
-<span class="token key attr-name">top-k</span> <span class="token punctuation">=</span> <span class="token value attr-value">20</span>
-<span class="token key attr-name">min-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
-<span class="token key attr-name">presence-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
-<span class="token key attr-name">repeat-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
-
-<h2 id="Expected-Performance"><a href="#Expected-Performance" class="headerlink" title="Expected Performance"></a>Expected Performance</h2><p>On this machine, for a ~72k-token prompt:</p>
-<ul>
-<li><strong>Prefill Speed:</strong> ~1450 t/s</li>
-<li><strong>Decode with MTP:</strong> ~45 t/s (highly dependent on how predictable the text is)</li>
-<li><strong>Time per Target Forward:</strong> ~53-55 ms at short context, ~62 ms at 72k context</li>
-<li><strong>Performance Variance:</strong> High acceptance (code, structured output) can reach nearly 60 t/s; low acceptance (creative prose) stays near 40 t/s. This fluctuation is an inherent characteristic of speculative decoding.</li>
-</ul>
-<hr>
-<p><em>The following sections contain technical evidence and reasoning.</em></p>
-<h2 id="Methodology"><a href="#Methodology" class="headerlink" title="Methodology"></a>Methodology</h2><ul>
-<li><strong>Metric of Record:</strong> <strong>Milliseconds per Target Forward</strong>, where <code>forwards = predicted_tokens - accepted_draft_tokens</code>. Plain tokens/second is contaminated by MTP acceptance variance. Milliseconds per forward provides a cleaner picture of hardware capability.</li>
-<li><strong>Statistical Principle:</strong> The data comes from single runs. Differences under 5% are treated as environmental noise.</li>
-<li><strong>Consistency:</strong> All tests used <code>-fa on</code>, tensor split, and MTP <code>n-max=3</code> on the aforementioned model.</li>
-</ul>
-<h2 id="Finding-1-Tensor-Split-Beats-Layer-Split-with-MTP"><a href="#Finding-1-Tensor-Split-Beats-Layer-Split-with-MTP" class="headerlink" title="Finding 1: Tensor Split Beats Layer Split with MTP"></a>Finding 1: Tensor Split Beats Layer Split with MTP</h2><p>Raw <code>llama-bench</code> (no speculative decoding) results:</p>
-<table>
-<thead>
-<tr>
-<th>Split Mode</th>
-<th>tg128 Speed</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Layer</td>
-<td>17.96 t/s</td>
-</tr>
-<tr>
-<td>Tensor</td>
-<td>16.89 t/s</td>
-</tr>
-</tbody></table>
-<p>With MTP (same prompt, 9-token start, 256 generated):</p>
-<table>
-<thead>
-<tr>
-<th>Split Mode</th>
-<th>ms per Target Forward</th>
-<th>Generation Speed (tg)</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Layer</td>
-<td>79.8 ms</td>
-<td>32.3 t/s</td>
-</tr>
-<tr>
-<td>Tensor</td>
-<td>54.4 ms</td>
-<td>48.8 t/s</td>
-</tr>
-</tbody></table>
-<p><strong>Conclusion:</strong> Tensor split is roughly 1.47x faster per forward here. This is because MTP turns each target forward into a small batch (1 bonus token + up to 3 draft tokens). Small batches parallelize across GPUs, whereas a single token is bottlenecked by allreduce latency.</p>
-<p><strong>Lesson:</strong> Always benchmark using the exact runtime configuration you intend to use. A naive <code>llama-bench</code> would incorrectly suggest keeping Layer Split, which would cost you a third of your decode throughput.</p>
-<p>A confession: my first MTP comparison forgot to pass <code>-sm</code>, so it compared layer to itself and &quot;confirmed&quot; layer. Pass the flags, check the log, and if two configs produce identical numbers, suspect your harness before you suspect the hardware.</p>
-<h2 id="Finding-2-Hardware-Supports-P2P-but-it-39-s-Irrelevant-to-this-AllReduce"><a href="#Finding-2-Hardware-Supports-P2P-but-it-39-s-Irrelevant-to-this-AllReduce" class="headerlink" title="Finding 2: Hardware Supports P2P, but it&#39;s Irrelevant to this AllReduce"></a>Finding 2: Hardware Supports P2P, but it&#39;s Irrelevant to this AllReduce</h2><p>The hardware supports it: <code>amdgpu.pcie_p2p=Y</code>, <code>hipDeviceCanAccessPeer</code> returns 1 both ways. Direct peer copy measures ~27 GB/s versus ~14 GB/s for host-staged copy.</p>
-<p>However, the built-in 2-GPU AllReduce in llama.cpp stages through Pinned Host Memory. The log confirms this:
-<code>ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU</code></p>
-<p><code>GGML_CUDA_P2P=1</code> enables peer access but does not alter the path. Measured with tensor split + MTP: 59.8 ms per forward with P2P on, 60.1 ms with it off. Pure noise. RCCL also picks its own transport, and disabling P2P there barely moves the numbers either.</p>
-<p>If you build with RCCL, do the <code>iommu=pt</code> change. Otherwise P2P is a setting you can ignore.</p>
-<h2 id="Finding-3-RCCL-Boosts-Prefill-but-Requires-NCCL-PROTO-Simple"><a href="#Finding-3-RCCL-Boosts-Prefill-but-Requires-NCCL-PROTO-Simple" class="headerlink" title="Finding 3: RCCL Boosts Prefill, but Requires NCCL_PROTO=Simple"></a>Finding 3: RCCL Boosts Prefill, but Requires <code>NCCL_PROTO=Simple</code></h2><p>In Tensor Split + MTP mode, for a ~35.6k-token prompt:</p>
-<table>
-<thead>
-<tr>
-<th>AllReduce Type</th>
-<th>Prefill Speed</th>
-<th>ms per Target Forward</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Internal (Host-staged)</td>
-<td>1088 t/s</td>
-<td>59.0 ms</td>
-</tr>
-<tr>
-<td>RCCL (Default)</td>
-<td>1446 t/s</td>
-<td>64.2 ms</td>
-</tr>
-<tr>
-<td>RCCL (<code>NCCL_PROTO=Simple</code>)</td>
-<td>1444 t/s</td>
-<td>59.0 ms</td>
-</tr>
-</tbody></table>
-<p>RCCL provides a ~33% prefill boost, but its default protocol selection costs about 10% on decode. Using <code>Simple</code> preserves the prefill gain while removing the decode penalty. Forcing <code>LL</code> alone is disastrous for prefill (drops to 641 t/s); avoid this.</p>
-<p>I also swept the explicit lists (<code>Simple</code>, <code>LL128</code>, <code>Simple,LL128</code>, <code>Simple,LL,LL128</code>). Once the list contains <code>Simple</code> or <code>LL128</code>, they are all within ~1 ms of each other. Pick <code>Simple</code> and move on.</p>
-<h2 id="Finding-4-ub-1024-is-a-quot-Free-quot-Prefill-Gain"><a href="#Finding-4-ub-1024-is-a-quot-Free-quot-Prefill-Gain" class="headerlink" title="Finding 4: -ub 1024 is a &quot;Free&quot; Prefill Gain"></a>Finding 4: <code>-ub 1024</code> is a &quot;Free&quot; Prefill Gain</h2><p>At 72k context (two runs each):</p>
-<table>
-<thead>
-<tr>
-<th>ubatch</th>
-<th>Prefill Speed</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>512</td>
-<td>1331 / 1375 t/s</td>
-</tr>
-<tr>
-<td>1024</td>
-<td>1438 / 1492 t/s</td>
-</tr>
-</tbody></table>
-<p>About +8% gain, while decode speed remains unchanged. <code>-b 2048</code> remains optimal.</p>
-<h2 id="Finding-5-Do-Not-Quantize-the-KV-Cache-here"><a href="#Finding-5-Do-Not-Quantize-the-KV-Cache-here" class="headerlink" title="Finding 5: Do Not Quantize the KV Cache here"></a>Finding 5: Do Not Quantize the KV Cache here</h2><p>At 72k context with RCCL + <code>Simple</code>:</p>
-<table>
-<thead>
-<tr>
-<th>KV Type</th>
-<th>ms per Target Forward</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>f16</td>
-<td>63.2 ms</td>
-</tr>
-<tr>
-<td>q8_0</td>
-<td>68.6 ms</td>
-</tr>
-<tr>
-<td>q4_0</td>
-<td>67.8 ms</td>
-</tr>
-</tbody></table>
-<p>The KV cache is substantial (~18 GB). While it is tempting to shrink it, the dequantization overhead in the attention kernel outweighs the bandwidth savings in a Flash Attention architecture. Keep f16 for optimal performance.</p>
-<h2 id="Finding-6-spec-draft-n-max-is-Workload-Dependent"><a href="#Finding-6-spec-draft-n-max-is-Workload-Dependent" class="headerlink" title="Finding 6: spec-draft-n-max is Workload-Dependent"></a>Finding 6: <code>spec-draft-n-max</code> is Workload-Dependent</h2><p>Tensor Split mode, 384 tokens generated:</p>
-<table>
-<thead>
-<tr>
-<th><code>n-max</code></th>
-<th>Prose Speed</th>
-<th>Prose Accept</th>
-<th>Code Speed</th>
-<th>Code Accept</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>2</td>
-<td>44.0 t/s</td>
-<td>59.0%</td>
-<td>50.0 t/s</td>
-<td>74.8%</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>48.7 t/s</strong></td>
-<td>54.4%</td>
-<td>58.3 t/s</td>
-<td>72.4%</td>
-</tr>
-<tr>
-<td>4</td>
-<td>42.9 t/s</td>
-<td>38.2%</td>
-<td><strong>62.4 t/s</strong></td>
-<td>69.4%</td>
-</tr>
-<tr>
-<td>5</td>
-<td>46.7 t/s</td>
-<td>40.6%</td>
-<td>57.6 t/s</td>
-<td>55.5%</td>
-</tr>
-</tbody></table>
-<p>Each extra draft token costs ~5 ms per forward. This only pays off if the draft tokens are consistently accepted. Prose predictability drops off significantly past 3; code remains viable. Use 3 for mixed traffic, and 4 for code-heavy or structured output workloads.</p>
-<h2 id="Ineffective-Optimizations"><a href="#Ineffective-Optimizations" class="headerlink" title="Ineffective Optimizations"></a>Ineffective Optimizations</h2><ul>
-<li><code>-DGGML_HIP_ROCWMMA_FATTN=ON</code>: Not a valid option in this revision.</li>
-<li><code>GGML_HIP_MMQ_MFMA=ON</code>: CDNA only.</li>
-<li><code>GGML_CUDA_P2P=1</code>: No measurable effect on the current AllReduce path.</li>
-<li>KV Quantization: Actively slower in this configuration.</li>
-</ul>
-<h2 id="Caveats"><a href="#Caveats" class="headerlink" title="Caveats"></a>Caveats</h2><ul>
-<li><strong>Environment Specificity:</strong> Data reflects my specific machine; numbers will differ based on your hardware/versions (especially Prefill).</li>
-<li><strong>MTP Variability:</strong> Acceptance rates fluctuate with content, so tokens/second is not a stable metric.</li>
-<li><strong>Quantization Differences:</strong> This test used Q8. A Q4 quant of the same model might decode roughly twice as fast (as it&#39;s memory-bandwidth bound), but at a noticeable quality cost.</li>
-</ul>
-<p>If you reproduce this and get different numbers, I would like to hear about it.</p>
-<hr>
-<h3 id="Key-Data-Checklist"><a href="#Key-Data-Checklist" class="headerlink" title="Key Data Checklist"></a>Key Data Checklist</h3><ul>
-<li><strong>Hardware:</strong> 2x Radeon AI PRO R9700 (gfx1201)</li>
-<li><strong>Model:</strong> Qwen3.8-27B-GGUF (UD-Q8_K_XL)</li>
-<li><strong>Kernel Params:</strong> <code>amd_iommu=on iommu=pt</code></li>
-<li><strong>Build Params:</strong> <code>GGML_HIP=ON</code>, <code>GGML_HIP_RCCL=ON</code>, <code>AMDGPU_TARGETS=gfx1201</code></li>
-<li><strong>Core Optimizations:</strong> <code>NCCL_PROTO=Simple</code>, <code>GGML_CUDA_ALLREDUCE=nccl</code></li>
-<li><strong>MTP Config:</strong> <code>spec-type=draft-mtp</code>, <code>spec-draft-n-max=3</code></li>
-<li><strong>Tensor Split:</strong> <code>split-mode=tensor</code>, <code>tensor-split=1,1</code></li>
-<li><strong>KV State:</strong> Keep f16 (No KV quantization)</li>
-<li><strong>Measured Performance:</strong> Prefill ~1450 t/s | Decode ~45-60 t/s (content dependent)</li>
-</ul>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
     <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2022/05/22/vulkan-imgui-image/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1174,7 +1174,7 @@ cmake <span class="token parameter variable">--build</span> build-rocm <span cla
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1277,7 +1277,7 @@ ImGui::Image(my_tex_id, ImVec2(my_tex_w, my_tex_h), uv_min, uv_max, tint_col, bo
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1432,7 +1432,7 @@ $$</p>
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1602,7 +1602,7 @@ int main()
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1728,98 +1728,6 @@ int main()
       
   
   
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="中">
-    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2020/07/04/multilingual-pelican-cn/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/blog/images/avatar.gif">
-      <meta itemprop="name" content="Q Gu">
-      <meta itemprop="description" content="Ideas are mine and mine only">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="QGU">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/blog/2020/07/04/multilingual-pelican-cn/" class="post-title-link" itemprop="url">Pelican 发布多语言文章</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">Posted on</span>
-
-              <time title="Created: 2020-07-04 02:00:00" itemprop="dateCreated datePublished" datetime="2020-07-04T02:00:00+00:00">2020-07-04</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">In</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/blog/categories/pelican/" itemprop="url" rel="index"><span itemprop="name">pelican</span></a>
-                </span>
-            </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>你应该已经注意到这篇文章有多个语言的翻译。
-Pelican 支持发布多语言文章，只需要一些简答的设置就能实现该功能。以下是我为了实现多语言支持进行的设置。</p>
-<h3 id="1-在pelicanconf-py给各个语言设置相应的-URL，让每篇文章不同的语言有自己的-URL。"><a href="#1-在pelicanconf-py给各个语言设置相应的-URL，让每篇文章不同的语言有自己的-URL。" class="headerlink" title="1. 在pelicanconf.py给各个语言设置相应的 URL，让每篇文章不同的语言有自己的 URL。"></a>1. 在<code>pelicanconf.py</code>给各个语言设置相应的 URL，让每篇文章不同的语言有自己的 URL。</h3><pre class="line-numbers language-python" data-language="python"><code class="language-python">DEFAULT_LANG <span class="token operator">=</span> <span class="token string">'en'</span>
-ARTICLE_URL <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;/'</span>
-ARTICLE_SAVE_AS <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;/index.html'</span>
-ARTICLE_LANG_URL <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;-&#123;lang&#125;/'</span>
-ARTICLE_LANG_SAVE_AS <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;-&#123;lang&#125;/index.html'</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span></span></code></pre>
-
-<h3 id="2-使用-lang-属性制定文章的语言。用相同的-slug-标记同一篇文章。"><a href="#2-使用-lang-属性制定文章的语言。用相同的-slug-标记同一篇文章。" class="headerlink" title="2. 使用 lang 属性制定文章的语言。用相同的 slug 标记同一篇文章。"></a>2. 使用 <code>lang</code> 属性制定文章的语言。用相同的 slug 标记同一篇文章。</h3><p><img src="%7Bstatic%7D/images/post-meta.png" alt="post-meta"></p>
-<h3 id="3-将语言选项添加到主题模版中"><a href="#3-将语言选项添加到主题模版中" class="headerlink" title="3. 将语言选项添加到主题模版中"></a>3. 将语言选项添加到主题模版中</h3><p>有些模版未提供多语言选项，比如我使用的<code>aboutwilson</code> 模版。这种情况只要将语言选项的 section 加入到模版的相应文件 <code>themes/aboutwilson/templates/article.html</code> 中就行了。 </p>
-<pre class="line-numbers language-markup" data-language="markup"><code class="language-markup">&#123;% if article.translations %&#125; 
-<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>div</span><span class="token punctuation">></span></span>
-    Languages:
-    &#123;% for translation in article.translations %&#125;
-    <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>span</span> <span class="token attr-name">itemprop</span><span class="token attr-value"><span class="token punctuation attr-equals">=</span><span class="token punctuation">"</span>translation<span class="token punctuation">"</span></span><span class="token punctuation">></span></span>
-        <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>a</span> <span class="token attr-name">href</span><span class="token attr-value"><span class="token punctuation attr-equals">=</span><span class="token punctuation">"</span>&#123;&#123; SITEURL &#125;&#125;/&#123;&#123; translation.url &#125;&#125;<span class="token punctuation">"</span></span> <span class="token attr-name">rel</span><span class="token attr-value"><span class="token punctuation attr-equals">=</span><span class="token punctuation">"</span>translation<span class="token punctuation">"</span></span><span class="token punctuation">></span></span>&#123;&#123;translation.lang&#125;&#125;<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>a</span><span class="token punctuation">></span></span>
-    <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>span</span><span class="token punctuation">></span></span>
-    &#123;% endfor %&#125;
-<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>div</span><span class="token punctuation">></span></span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
     <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2020/07/04/multilingual-pelican/">
 
@@ -1852,7 +1760,7 @@ ARTICLE_LANG_SAVE_AS <span class="token operator">=</span> <span class="token st
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1886,6 +1794,98 @@ ARTICLE_LANG_SAVE_AS <span class="token operator">=</span> <span class="token st
 <h3 id="2-Write-articles-in-different-languages-with-lang-property-in-the-meta-Simply-set-the-property-and-write-the-post-in-corresponding-language"><a href="#2-Write-articles-in-different-languages-with-lang-property-in-the-meta-Simply-set-the-property-and-write-the-post-in-corresponding-language" class="headerlink" title="2. Write articles in different languages with lang property in the meta. Simply set the property and write the post in corresponding language."></a>2. Write articles in different languages with <code>lang</code> property in the meta. Simply set the property and write the post in corresponding language.</h3><p><img src="%7Bstatic%7D/images/post-meta.png" alt="post-meta"></p>
 <h3 id="3-Add-language-selector-to-theme-template"><a href="#3-Add-language-selector-to-theme-template" class="headerlink" title="3. Add language selector to theme template"></a>3. Add language selector to theme template</h3><p>If needed, add language selection tags in the article template of the theme.
 I&#39;m using <code>aboutwilson</code> theme which doesn&#39;t contain the translation field. In this case, I added the links to the template of the theme in <code>themes/aboutwilson/templates/article.html</code> right below the <code>tags</code> section.</p>
+<pre class="line-numbers language-markup" data-language="markup"><code class="language-markup">&#123;% if article.translations %&#125; 
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>div</span><span class="token punctuation">></span></span>
+    Languages:
+    &#123;% for translation in article.translations %&#125;
+    <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>span</span> <span class="token attr-name">itemprop</span><span class="token attr-value"><span class="token punctuation attr-equals">=</span><span class="token punctuation">"</span>translation<span class="token punctuation">"</span></span><span class="token punctuation">></span></span>
+        <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>a</span> <span class="token attr-name">href</span><span class="token attr-value"><span class="token punctuation attr-equals">=</span><span class="token punctuation">"</span>&#123;&#123; SITEURL &#125;&#125;/&#123;&#123; translation.url &#125;&#125;<span class="token punctuation">"</span></span> <span class="token attr-name">rel</span><span class="token attr-value"><span class="token punctuation attr-equals">=</span><span class="token punctuation">"</span>translation<span class="token punctuation">"</span></span><span class="token punctuation">></span></span>&#123;&#123;translation.lang&#125;&#125;<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>a</span><span class="token punctuation">></span></span>
+    <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>span</span><span class="token punctuation">></span></span>
+    &#123;% endfor %&#125;
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>div</span><span class="token punctuation">></span></span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="中">
+    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2020/07/04/multilingual-pelican-cn/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/blog/images/avatar.gif">
+      <meta itemprop="name" content="Q Gu">
+      <meta itemprop="description" content="Ideas are mine and mine only">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="QGU">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/blog/2020/07/04/multilingual-pelican-cn/" class="post-title-link" itemprop="url">Pelican 发布多语言文章</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2020-07-04 02:00:00" itemprop="dateCreated datePublished" datetime="2020-07-04T02:00:00+00:00">2020-07-04</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2026-09-26 04:56:59" itemprop="dateModified" datetime="2026-09-26T04:56:59+00:00">2026-09-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/blog/categories/pelican/" itemprop="url" rel="index"><span itemprop="name">pelican</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>你应该已经注意到这篇文章有多个语言的翻译。
+Pelican 支持发布多语言文章，只需要一些简答的设置就能实现该功能。以下是我为了实现多语言支持进行的设置。</p>
+<h3 id="1-在pelicanconf-py给各个语言设置相应的-URL，让每篇文章不同的语言有自己的-URL。"><a href="#1-在pelicanconf-py给各个语言设置相应的-URL，让每篇文章不同的语言有自己的-URL。" class="headerlink" title="1. 在pelicanconf.py给各个语言设置相应的 URL，让每篇文章不同的语言有自己的 URL。"></a>1. 在<code>pelicanconf.py</code>给各个语言设置相应的 URL，让每篇文章不同的语言有自己的 URL。</h3><pre class="line-numbers language-python" data-language="python"><code class="language-python">DEFAULT_LANG <span class="token operator">=</span> <span class="token string">'en'</span>
+ARTICLE_URL <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;/'</span>
+ARTICLE_SAVE_AS <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;/index.html'</span>
+ARTICLE_LANG_URL <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;-&#123;lang&#125;/'</span>
+ARTICLE_LANG_SAVE_AS <span class="token operator">=</span> <span class="token string">'posts/&#123;date:%Y&#125;/&#123;date:%m&#125;/&#123;slug&#125;-&#123;lang&#125;/index.html'</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<h3 id="2-使用-lang-属性制定文章的语言。用相同的-slug-标记同一篇文章。"><a href="#2-使用-lang-属性制定文章的语言。用相同的-slug-标记同一篇文章。" class="headerlink" title="2. 使用 lang 属性制定文章的语言。用相同的 slug 标记同一篇文章。"></a>2. 使用 <code>lang</code> 属性制定文章的语言。用相同的 slug 标记同一篇文章。</h3><p><img src="%7Bstatic%7D/images/post-meta.png" alt="post-meta"></p>
+<h3 id="3-将语言选项添加到主题模版中"><a href="#3-将语言选项添加到主题模版中" class="headerlink" title="3. 将语言选项添加到主题模版中"></a>3. 将语言选项添加到主题模版中</h3><p>有些模版未提供多语言选项，比如我使用的<code>aboutwilson</code> 模版。这种情况只要将语言选项的 section 加入到模版的相应文件 <code>themes/aboutwilson/templates/article.html</code> 中就行了。 </p>
 <pre class="line-numbers language-markup" data-language="markup"><code class="language-markup">&#123;% if article.translations %&#125; 
 <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>div</span><span class="token punctuation">></span></span>
     Languages:
