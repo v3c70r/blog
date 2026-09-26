@@ -94,7 +94,7 @@
     <header class="header" itemscope itemtype="http://schema.org/WPHeader">
       <div class="header-inner"><div class="site-brand-container">
   <div class="site-nav-toggle">
-    <div class="toggle" aria-label="Toggle navigation bar">
+    <div class="toggle" aria-label="Basculer la barre de navigation">
       <span class="toggle-line toggle-line-first"></span>
       <span class="toggle-line toggle-line-middle"></span>
       <span class="toggle-line toggle-line-last"></span>
@@ -124,7 +124,7 @@
   <ul id="menu" class="menu">
         <li class="menu-item menu-item-home">
 
-    <a href="/blog/" rel="section"><i class="fa fa-fw fa-home"></i>Home</a>
+    <a href="/blog/" rel="section"><i class="fa fa-fw fa-home"></i>Accueil</a>
 
   </li>
         <li class="menu-item menu-item-archives">
@@ -155,6 +155,990 @@
 
           <div class="content index posts-expand">
             
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="fr">
+    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/blog/images/avatar.gif">
+      <meta itemprop="name" content="Q Gu">
+      <meta itemprop="description" content="Ideas are mine and mine only">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="QGU">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/" class="post-title-link" itemprop="url">Faire tourner Qwen3.8-27B (UD-Q8_K_XL) sur 2x Radeon AI PRO R9700</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2026-09-22 12:00:00" itemprop="dateCreated datePublished" datetime="2026-09-22T12:00:00+00:00">2026-09-22</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/blog/categories/llm/" itemprop="url" rel="index"><span itemprop="name">llm</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>Langues : <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/">English</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">Français</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">中文</a></p>
+</blockquote>
+<p><strong>Note :</strong> Ceci est un point de données, pas une vérité absolue. C&#39;est une configuration que j&#39;ai mesurée sur ma machine, avec les preuves derrière chaque choix. Si vous faites tourner le même modèle sur le même type de matériel, cela devrait vous économiser un week-end de tests.</p>
+<p><strong>Si vous voulez seulement la configuration, lisez cette section et arrêtez-vous. La comparaison et le raisonnement viennent après la ligne horizontale.</strong></p>
+<h2 id="Materiel-et-modele"><a href="#Materiel-et-modele" class="headerlink" title="Matériel et modèle"></a>Matériel et modèle</h2><ul>
+<li><strong>CPU :</strong> AMD EPYC 7302 (16 coeurs / 32 threads)</li>
+<li><strong>RAM :</strong> 125 Go</li>
+<li><strong>GPU :</strong> 2x Radeon AI PRO R9700 (gfx1201, RDNA4), 32 Go chacune (64 Go au total)</li>
+<li><strong>Interconnexion :</strong> Chaque GPU sur PCIe 5.0 x16, sur des complexes racine différents</li>
+<li><strong>Environnement logiciel :</strong> Noyau 6.17, ROCm 7.14</li>
+<li><strong>Framework d&#39;inférence :</strong> llama.cpp à la version <code>709fe755d</code> (build 11116)</li>
+</ul>
+<p><strong>Modèle cible :</strong> <code>unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</code>, taille 29,3 Gio.
+<strong>Métadonnées :</strong> 64 couches, <code>n_head=24</code>, <code>n_head_kv=4</code>, dimension de tête 256, <code>n_ctx_train=262144</code>. Le modèle n&#39;utilise pas de fenêtre glissante et inclut une tête MTP (<code>nextn_predict_layers=1</code>), ce qui rend le décodage spéculatif très efficace ici.</p>
+<h2 id="1-Noyau-passthrough-IOMMU"><a href="#1-Noyau-passthrough-IOMMU" class="headerlink" title="1. Noyau : passthrough IOMMU"></a>1. Noyau : passthrough IOMMU</h2><p>Ajoutez <code>amd_iommu=on iommu=pt</code> à la ligne de commande du noyau, puis redémarrez :</p>
+<pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">BOOT_IMAGE</span><span class="token operator">=</span><span class="token punctuation">..</span>. ro quiet splash <span class="token assign-left variable">amd_iommu</span><span class="token operator">=</span>on <span class="token assign-left variable">iommu</span><span class="token operator">=</span>pt<span aria-hidden="true" class="line-numbers-rows"><span></span></span></code></pre>
+
+<p><em>Note : Vous n&#39;en avez besoin que pour RCCL (étape 2). Sans cela, RCCL avertit d&#39;un risque de blocage sur les systèmes multi-GPU.</em></p>
+<h2 id="2-Compiler-llama-cpp-pour-ROCm-avec-RCCL"><a href="#2-Compiler-llama-cpp-pour-ROCm-avec-RCCL" class="headerlink" title="2. Compiler llama.cpp pour ROCm avec RCCL"></a>2. Compiler llama.cpp pour ROCm avec RCCL</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash">cmake <span class="token parameter variable">-S</span> <span class="token builtin class-name">.</span> <span class="token parameter variable">-B</span> build-rocm <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DAMDGPU_TARGETS</span><span class="token operator">=</span>gfx1201 <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP_RCCL</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DCMAKE_BUILD_TYPE</span><span class="token operator">=</span>Release
+cmake <span class="token parameter variable">--build</span> build-rocm <span class="token parameter variable">-j</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p><strong>Conseils de compilation pour éviter une recompilation inutile :</strong></p>
+<ul>
+<li><code>GGML_HIP_ROCWMMA_FATTN</code> : Cette option n&#39;existe pas dans cette révision. La passer ne fait rien (elle reste <code>UNINITIALIZED</code> dans le cache, et il n&#39;y a pas de code rocWMMA dans le chemin FA).</li>
+<li><code>GGML_HIP_MMQ_MFMA</code> : Ne concerne que CDNA. Sur RDNA4, c&#39;est sans effet ; le WMMA de gfx12 est compilé automatiquement.</li>
+</ul>
+<h2 id="3-Lancer-l-39-execution"><a href="#3-Lancer-l-39-execution" class="headerlink" title="3. Lancer l&#39;exécution"></a>3. Lancer l&#39;exécution</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">NCCL_PROTO</span><span class="token operator">=</span>Simple <span class="token assign-left variable">GGML_CUDA_ALLREDUCE</span><span class="token operator">=</span>nccl <span class="token punctuation">\</span>
+  ./llama-server <span class="token punctuation">\</span>
+    <span class="token parameter variable">-m</span> Qwen3.8-27B-UD-Q8_K_XL.gguf <span class="token punctuation">\</span>
+    <span class="token parameter variable">-ngl</span> <span class="token number">99</span> <span class="token parameter variable">-fa</span> on <span class="token punctuation">\</span>
+    <span class="token parameter variable">-sm</span> tensor <span class="token parameter variable">-ts</span> <span class="token number">1,1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-b</span> <span class="token number">2048</span> <span class="token parameter variable">-ub</span> <span class="token number">1024</span> <span class="token punctuation">\</span>
+    --spec-type draft-mtp --spec-draft-n-max <span class="token number">3</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--temp</span> <span class="token number">1.0</span> --top-p <span class="token number">0.95</span> --top-k <span class="token number">20</span> --min-p <span class="token number">0</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-c</span> <span class="token number">98304</span> <span class="token parameter variable">-np</span> <span class="token number">1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--host</span> <span class="token number">0.0</span>.0.0 <span class="token parameter variable">--port</span> <span class="token number">8080</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p>La même chose via un fichier <code>config.ini</code>, si vous utilisez le mode routeur :</p>
+<pre class="line-numbers language-ini" data-language="ini"><code class="language-ini"><span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">*</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">host</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0.0.0</span>
+<span class="token key attr-name">port</span> <span class="token punctuation">=</span> <span class="token value attr-value">8080</span>
+
+<span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">qwen3-27b</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">hf</span> <span class="token punctuation">=</span> <span class="token value attr-value">unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</span>
+<span class="token key attr-name">ngl</span> <span class="token punctuation">=</span> <span class="token value attr-value">99</span>
+<span class="token key attr-name">flash-attn</span> <span class="token punctuation">=</span> <span class="token value attr-value">true</span>
+<span class="token key attr-name">spec-type</span> <span class="token punctuation">=</span> <span class="token value attr-value">draft-mtp</span>
+<span class="token key attr-name">spec-draft-n-max</span> <span class="token punctuation">=</span> <span class="token value attr-value">3</span>
+<span class="token key attr-name">split-mode</span> <span class="token punctuation">=</span> <span class="token value attr-value">tensor</span>
+<span class="token key attr-name">tensor-split</span> <span class="token punctuation">=</span> <span class="token value attr-value">1,1</span>
+<span class="token key attr-name">batch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">2048</span>
+<span class="token key attr-name">ubatch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">1024</span>
+<span class="token key attr-name">temp</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span>
+<span class="token key attr-name">top-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.95</span>
+<span class="token key attr-name">top-k</span> <span class="token punctuation">=</span> <span class="token value attr-value">20</span>
+<span class="token key attr-name">min-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">presence-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">repeat-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<h2 id="A-quoi-s-39-attendre"><a href="#A-quoi-s-39-attendre" class="headerlink" title="À quoi s&#39;attendre"></a>À quoi s&#39;attendre</h2><p>Sur un prompt d&#39;environ 72k tokens sur cette machine :</p>
+<ul>
+<li><strong>Vitesse de Prefill :</strong> environ 1450 t/s</li>
+<li><strong>Décodage avec MTP :</strong> environ 45 t/s (très dépendant de la prévisibilité du texte)</li>
+<li><strong>Temps par passe cible :</strong> environ 53-55 ms en contexte court, environ 62 ms à 72k de contexte</li>
+<li><strong>Variabilité :</strong> Une acceptation élevée (code, sortie structurée) peut atteindre près de 60 t/s ; une acceptation faible (prose créative) avoisine les 40 t/s. Cette fluctuation est inhérente au décodage spéculatif.</li>
+</ul>
+<hr>
+<p><em>Tout ce qui suit est la preuve. Arrêtez-vous ici si vous voulez seulement la configuration.</em></p>
+<h2 id="Methodologie-de-mesure"><a href="#Methodologie-de-mesure" class="headerlink" title="Méthodologie de mesure"></a>Méthodologie de mesure</h2><ul>
+<li><strong>Indicateur de référence :</strong> <strong>Millisecondes par passe cible</strong>, où <code>passes = tokens_prédits - tokens_brouillon_acceptés</code>. Le débit brut en tokens/seconde est faussé par le taux d&#39;acceptation du MTP. Les millisecondes par passe reflètent mieux la capacité matérielle.</li>
+<li><strong>Principes statistiques :</strong> Toutes les données proviennent d&#39;exécutions uniques. Considérez les écarts inférieurs à 5 % comme du bruit.</li>
+<li><strong>Cohérence :</strong> Toutes les mesures utilisent <code>-fa on</code>, le split tensor et MTP <code>n-max=3</code> sur le modèle ci-dessus.</li>
+</ul>
+<h2 id="Constat-1-Le-split-Tensor-bat-le-split-Layer-avec-MTP"><a href="#Constat-1-Le-split-Tensor-bat-le-split-Layer-avec-MTP" class="headerlink" title="Constat 1 : Le split Tensor bat le split Layer avec MTP"></a>Constat 1 : Le split Tensor bat le split Layer avec MTP</h2><p>Résultats de <code>llama-bench</code> brut (sans décodage spéculatif) :</p>
+<table>
+<thead>
+<tr>
+<th>Mode de split</th>
+<th>Vitesse tg128</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>17,96 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>16,89 t/s</td>
+</tr>
+</tbody></table>
+<p>Avec MTP (même prompt, départ à 9 tokens, 256 générés) :</p>
+<table>
+<thead>
+<tr>
+<th>Mode de split</th>
+<th>ms par passe cible</th>
+<th>Vitesse gén. (tg)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>79,8 ms</td>
+<td>32,3 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>54,4 ms</td>
+<td>48,8 t/s</td>
+</tr>
+</tbody></table>
+<p><strong>Conclusion :</strong> Le split Tensor est environ 1,47x plus rapide par passe ici. La raison est que MTP transforme chaque passe cible en un petit lot (1 token bonus + jusqu&#39;à 3 tokens brouillons). Un petit lot se parallélise sur les GPU, alors qu&#39;un seul token est limité par la latence de l&#39;allreduce.</p>
+<p><strong>Leçon :</strong> Mesurez toujours avec la configuration exacte que vous allez utiliser. Un benchmark sans décodage spéculatif vous aurait fait garder le split Layer, ce qui vous coûterait un tiers de votre débit de décodage.</p>
+<p>Confession : ma première comparaison MTP avait oublié de passer <code>-sm</code>, donc elle comparait layer avec lui-même et « confirmait » layer. Passez les flags, vérifiez le log, et si deux configurations donnent des chiffres identiques, soupçonnez votre harnais avant de soupçonner le matériel.</p>
+<h2 id="Constat-2-Le-P2P-est-reel-sur-ce-materiel-mais-sans-effet-sur-cet-AllReduce"><a href="#Constat-2-Le-P2P-est-reel-sur-ce-materiel-mais-sans-effet-sur-cet-AllReduce" class="headerlink" title="Constat 2 : Le P2P est réel sur ce matériel, mais sans effet sur cet AllReduce"></a>Constat 2 : Le P2P est réel sur ce matériel, mais sans effet sur cet AllReduce</h2><p>Le matériel supporte le P2P : <code>amdgpu.pcie_p2p=Y</code>, <code>hipDeviceCanAccessPeer</code> renvoie 1 dans les deux sens. Copie directe entre pairs mesurée à ~27 Go/s contre ~14 Go/s via l&#39;hôte.</p>
+<p>Cependant, l&#39;AllReduce 2-GPU intégré à llama.cpp passe par de la mémoire hôte épinglée. Le log le confirme directement :
+<code>ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU</code></p>
+<p><code>GGML_CUDA_P2P=1</code> active la permission, mais ne change pas ce chemin. Mesuré avec split Tensor + MTP : 59,8 ms par passe avec P2P, 60,1 ms sans. Bruit pur. RCCL choisit aussi son propre transport, et y désactiver le P2P ne change presque pas les chiffres.</p>
+<p>Si vous compilez avec RCCL, faites le changement <code>iommu=pt</code>. Sinon, le P2P est un réglage que vous pouvez ignorer.</p>
+<h2 id="Constat-3-RCCL-booste-le-Prefill-mais-necessite-NCCL-PROTO-Simple"><a href="#Constat-3-RCCL-booste-le-Prefill-mais-necessite-NCCL-PROTO-Simple" class="headerlink" title="Constat 3 : RCCL booste le Prefill, mais nécessite NCCL_PROTO=Simple"></a>Constat 3 : RCCL booste le Prefill, mais nécessite <code>NCCL_PROTO=Simple</code></h2><p>En mode Tensor Split + MTP, pour un prompt de ~35,6k tokens :</p>
+<table>
+<thead>
+<tr>
+<th>Type AllReduce</th>
+<th>Vitesse Prefill</th>
+<th>ms par passe cible</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Interne (staging hôte)</td>
+<td>1088 t/s</td>
+<td>59,0 ms</td>
+</tr>
+<tr>
+<td>RCCL (défaut)</td>
+<td>1446 t/s</td>
+<td>64,2 ms</td>
+</tr>
+<tr>
+<td>RCCL (<code>NCCL_PROTO=Simple</code>)</td>
+<td>1444 t/s</td>
+<td>59,0 ms</td>
+</tr>
+</tbody></table>
+<p>RCCL offre un gain de Prefill de ~33 %, mais son protocole par défaut coûte environ 10 % en décodage. <code>Simple</code> préserve le gain de Prefill et élimine la pénalité de décodage. Forcer <code>LL</code> seul est catastrophique pour le Prefill (chute à 641 t/s), ne le faites pas.</p>
+<p>J&#39;ai aussi testé les listes explicites (<code>Simple</code>, <code>LL128</code>, <code>Simple,LL128</code>, <code>Simple,LL,LL128</code>). Dès que la liste contient <code>Simple</code> ou <code>LL128</code>, elles sont toutes à environ 1 ms les unes des autres. Prenez <code>Simple</code> et passez à autre chose.</p>
+<h2 id="Constat-4-ub-1024-est-un-gain-de-Prefill-quot-gratuit-quot"><a href="#Constat-4-ub-1024-est-un-gain-de-Prefill-quot-gratuit-quot" class="headerlink" title="Constat 4 : -ub 1024 est un gain de Prefill &quot;gratuit&quot;"></a>Constat 4 : <code>-ub 1024</code> est un gain de Prefill &quot;gratuit&quot;</h2><p>À 72k de contexte (deux exécutions chacune) :</p>
+<table>
+<thead>
+<tr>
+<th>ubatch</th>
+<th>Vitesse Prefill</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>512</td>
+<td>1331 / 1375 t/s</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>1438 / 1492 t/s</td>
+</tr>
+</tbody></table>
+<p>Gain d&#39;environ +8 %, débit de décodage inchangé. <code>-b 2048</code> reste optimal.</p>
+<h2 id="Constat-5-Ne-quantifiez-pas-le-cache-KV-ici"><a href="#Constat-5-Ne-quantifiez-pas-le-cache-KV-ici" class="headerlink" title="Constat 5 : Ne quantifiez pas le cache KV ici"></a>Constat 5 : Ne quantifiez pas le cache KV ici</h2><p>À 72k de contexte avec RCCL + <code>Simple</code> :</p>
+<table>
+<thead>
+<tr>
+<th>Type KV</th>
+<th>ms par passe cible</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>f16</td>
+<td>63,2 ms</td>
+</tr>
+<tr>
+<td>q8_0</td>
+<td>68,6 ms</td>
+</tr>
+<tr>
+<td>q4_0</td>
+<td>67,8 ms</td>
+</tr>
+</tbody></table>
+<p>Le cache KV est massif ici (~18 Go). Bien qu&#39;il soit tentant de le réduire, le coût de déquantification dans le noyau d&#39;attention est supérieur à la bande passante gagnée avec le Flash Attention. Gardez f16 pour une performance optimale.</p>
+<h2 id="Constat-6-spec-draft-n-max-depend-du-type-de-charge"><a href="#Constat-6-spec-draft-n-max-depend-du-type-de-charge" class="headerlink" title="Constat 6 : spec-draft-n-max dépend du type de charge"></a>Constat 6 : <code>spec-draft-n-max</code> dépend du type de charge</h2><p>Mode Tensor Split, 384 tokens générés :</p>
+<table>
+<thead>
+<tr>
+<th><code>n-max</code></th>
+<th>Vitesse prose</th>
+<th>Accept. prose</th>
+<th>Vitesse code</th>
+<th>Accept. code</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>2</td>
+<td>44,0 t/s</td>
+<td>59,0%</td>
+<td>50,0 t/s</td>
+<td>74,8%</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>48,7 t/s</strong></td>
+<td>54,4%</td>
+<td>58,3 t/s</td>
+<td>72,4%</td>
+</tr>
+<tr>
+<td>4</td>
+<td>42,9 t/s</td>
+<td>38,2%</td>
+<td><strong>62,4 t/s</strong></td>
+<td>69,4%</td>
+</tr>
+<tr>
+<td>5</td>
+<td>46,7 t/s</td>
+<td>40,6%</td>
+<td>57,6 t/s</td>
+<td>55,5%</td>
+</tr>
+</tbody></table>
+<p>Chaque jeton brouillon supplémentaire coûte environ 5 ms par passe. Cela n&#39;en vaut la peine que si les jetons brouillons sont continuellement acceptés. La prose perd sa prévisibilité après 3 ; le code reste viable. Utilisez 3 pour un trafic mixte, et 4 si votre charge est principalement du code ou de la sortie structurée.</p>
+<h2 id="Optimisations-inefficaces"><a href="#Optimisations-inefficaces" class="headerlink" title="Optimisations inefficaces"></a>Optimisations inefficaces</h2><ul>
+<li><code>-DGGML_HIP_ROCWMMA_FATTN=ON</code> : Option inexistante dans cette révision.</li>
+<li><code>GGML_HIP_MMQ_MFMA=ON</code> : CDNA uniquement.</li>
+<li><code>GGML_CUDA_P2P=1</code> : Aucun effet mesurable sur le chemin AllReduce actuel.</li>
+<li>Quantification KV : Rend l&#39;inférence activement plus lente.</li>
+</ul>
+<h2 id="Reserves"><a href="#Reserves" class="headerlink" title="Réserves"></a>Réserves</h2><ul>
+<li><strong>Spécificité de l&#39;environnement :</strong> Les données ne représentent que ma machine ; vos chiffres varieront en fonction de votre matériel/versions (surtout le Prefill).</li>
+<li><strong>Variabilité du MTP :</strong> Le taux d&#39;acceptation fluctue selon le contenu, donc les tokens/seconde ne sont pas une mesure stable.</li>
+<li><strong>Différences de quantification :</strong> Ce test est basé sur Q8. Un quant Q4 du même modèle pourrait décoder environ deux fois plus vite (car le décodage est limité par la bande passante mémoire), au prix d&#39;une perte de qualité notable.</li>
+</ul>
+<p>Si vous reproduisez ceci et obtenez des chiffres différents, j&#39;aimerais le savoir.</p>
+<hr>
+<h3 id="Liste-de-verification-des-donnees-cles"><a href="#Liste-de-verification-des-donnees-cles" class="headerlink" title="Liste de vérification des données clés"></a>Liste de vérification des données clés</h3><ul>
+<li><strong>Matériel :</strong> 2x Radeon AI PRO R9700 (gfx1201)</li>
+<li><strong>Modèle :</strong> Qwen3.8-27B-GGUF (UD-Q8_K_XL)</li>
+<li><strong>Paramètres noyau :</strong> <code>amd_iommu=on iommu=pt</code></li>
+<li><strong>Paramètres compilation :</strong> <code>GGML_HIP=ON</code>, <code>GGML_HIP_RCCL=ON</code>, <code>AMDGPU_TARGETS=gfx1201</code></li>
+<li><strong>Optimisations clés :</strong> <code>NCCL_PROTO=Simple</code>, <code>GGML_CUDA_ALLREDUCE=nccl</code></li>
+<li><strong>Configuration MTP :</strong> <code>spec-type=draft-mtp</code>, <code>spec-draft-n-max=3</code></li>
+<li><strong>Tensor Split :</strong> <code>split-mode=tensor</code>, <code>tensor-split=1,1</code></li>
+<li><strong>État KV :</strong> Conserver f16 (Pas de quantification KV)</li>
+<li><strong>Performances mesurées :</strong> Prefill ~1450 t/s | Décodage ~45-60 t/s (selon le contenu)</li>
+</ul>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="中">
+    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/blog/images/avatar.gif">
+      <meta itemprop="name" content="Q Gu">
+      <meta itemprop="description" content="Ideas are mine and mine only">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="QGU">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/" class="post-title-link" itemprop="url">在双 Radeon AI PRO R9700 上运行 Qwen3.8-27B (UD-Q8_K_XL)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2026-09-22 12:00:00" itemprop="dateCreated datePublished" datetime="2026-09-22T12:00:00+00:00">2026-09-22</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/blog/categories/llm/" itemprop="url" rel="index"><span itemprop="name">llm</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>语言：<a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/">English</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">Français</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">中文</a></p>
+</blockquote>
+<p><strong>注意：</strong> 以下数据仅源于我的个人测试环境，不代表最终结论。本文旨在分享我实测出的最优配置及其背后的技术支撑。如果你正计划在同类硬件上运行相同模型，这份实测指南将帮你节省大量的试错成本。</p>
+<p><strong>如果你只想快速获取配置，请直接阅读第一章节即可。分割线之后将深入探讨性能对比与技术推理。</strong></p>
+<h2 id="硬件与模型概览"><a href="#硬件与模型概览" class="headerlink" title="硬件与模型概览"></a>硬件与模型概览</h2><ul>
+<li><strong>CPU：</strong> AMD EPYC 7302（16 核 / 32 线程）</li>
+<li><strong>内存：</strong> 125 GB</li>
+<li><strong>GPU：</strong> 2x Radeon AI PRO R9700（gfx1201，RDNA4），每张 32 GB（共 64 GB）</li>
+<li><strong>互连：</strong> 每张卡连接至独立的 PCIe 5.0 x16 通道（位于不同的 Root Complex）</li>
+<li><strong>软件环境：</strong> 内核 6.17，ROCm 7.14</li>
+<li><strong>推理框架：</strong> llama.cpp 版本 <code>709fe755d</code>（build 11116）</li>
+</ul>
+<p><strong>目标模型：</strong> <code>unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</code>，模型大小 29.3 GiB。
+<strong>模型元数据：</strong> 64 层，<code>n_head=24</code>，<code>n_head_kv=4</code>，head dim 256，<code>n_ctx_train=262144</code>。模型无滑动窗口并带有一个 MTP 头（<code>nextn_predict_layers=1</code>），这使得投机解码（Speculative Decoding）在这里非常高效。</p>
+<h2 id="1-内核：IOMMU-Passthrough"><a href="#1-内核：IOMMU-Passthrough" class="headerlink" title="1. 内核：IOMMU Passthrough"></a>1. 内核：IOMMU Passthrough</h2><p>在启动参数中加入 <code>amd_iommu=on iommu=pt</code> 并重启：</p>
+<pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">BOOT_IMAGE</span><span class="token operator">=</span><span class="token punctuation">..</span>. ro quiet splash <span class="token assign-left variable">amd_iommu</span><span class="token operator">=</span>on <span class="token assign-left variable">iommu</span><span class="token operator">=</span>pt<span aria-hidden="true" class="line-numbers-rows"><span></span></span></code></pre>
+
+<p><em>注：此步骤仅在后续使用 RCCL（第 2 步）时必需。若不配置，RCCL 会发出多 GPU 系统可能挂起的警告。</em></p>
+<h2 id="2-编译带-RCCL-支持的-ROCm-版-llama-cpp"><a href="#2-编译带-RCCL-支持的-ROCm-版-llama-cpp" class="headerlink" title="2. 编译带 RCCL 支持的 ROCm 版 llama.cpp"></a>2. 编译带 RCCL 支持的 ROCm 版 llama.cpp</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash">cmake <span class="token parameter variable">-S</span> <span class="token builtin class-name">.</span> <span class="token parameter variable">-B</span> build-rocm <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DAMDGPU_TARGETS</span><span class="token operator">=</span>gfx1201 <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP_RCCL</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DCMAKE_BUILD_TYPE</span><span class="token operator">=</span>Release
+cmake <span class="token parameter variable">--build</span> build-rocm <span class="token parameter variable">-j</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p><strong>编译避坑指南：</strong></p>
+<ul>
+<li><code>GGML_HIP_ROCWMMA_FATTN</code>：当前版本不支持该选项，传参无效（Cache 中始终为 <code>UNINITIALIZED</code>，且 FA 路径中没有 rocWMMA 代码）。</li>
+<li><code>GGML_HIP_MMQ_MFMA</code>：仅对 CDNA 架构有效。在 RDNA4 上无任何影响，gfx12 的 WMMA 代码会自动编译入库。</li>
+</ul>
+<h2 id="3-启动命令"><a href="#3-启动命令" class="headerlink" title="3. 启动命令"></a>3. 启动命令</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">NCCL_PROTO</span><span class="token operator">=</span>Simple <span class="token assign-left variable">GGML_CUDA_ALLREDUCE</span><span class="token operator">=</span>nccl <span class="token punctuation">\</span>
+  ./llama-server <span class="token punctuation">\</span>
+    <span class="token parameter variable">-m</span> Qwen3.8-27B-UD-Q8_K_XL.gguf <span class="token punctuation">\</span>
+    <span class="token parameter variable">-ngl</span> <span class="token number">99</span> <span class="token parameter variable">-fa</span> on <span class="token punctuation">\</span>
+    <span class="token parameter variable">-sm</span> tensor <span class="token parameter variable">-ts</span> <span class="token number">1,1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-b</span> <span class="token number">2048</span> <span class="token parameter variable">-ub</span> <span class="token number">1024</span> <span class="token punctuation">\</span>
+    --spec-type draft-mtp --spec-draft-n-max <span class="token number">3</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--temp</span> <span class="token number">1.0</span> --top-p <span class="token number">0.95</span> --top-k <span class="token number">20</span> --min-p <span class="token number">0</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-c</span> <span class="token number">98304</span> <span class="token parameter variable">-np</span> <span class="token number">1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--host</span> <span class="token number">0.0</span>.0.0 <span class="token parameter variable">--port</span> <span class="token number">8080</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p>如果你更倾向于使用 Router/Preset 模式，对应的 <code>config.ini</code> 配置如下：</p>
+<pre class="line-numbers language-ini" data-language="ini"><code class="language-ini"><span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">*</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">host</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0.0.0</span>
+<span class="token key attr-name">port</span> <span class="token punctuation">=</span> <span class="token value attr-value">8080</span>
+
+<span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">qwen3-27b</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">hf</span> <span class="token punctuation">=</span> <span class="token value attr-value">unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</span>
+<span class="token key attr-name">ngl</span> <span class="token punctuation">=</span> <span class="token value attr-value">99</span>
+<span class="token key attr-name">flash-attn</span> <span class="token punctuation">=</span> <span class="token value attr-value">true</span>
+<span class="token key attr-name">spec-type</span> <span class="token punctuation">=</span> <span class="token value attr-value">draft-mtp</span>
+<span class="token key attr-name">spec-draft-n-max</span> <span class="token punctuation">=</span> <span class="token value attr-value">3</span>
+<span class="token key attr-name">split-mode</span> <span class="token punctuation">=</span> <span class="token value attr-value">tensor</span>
+<span class="token key attr-name">tensor-split</span> <span class="token punctuation">=</span> <span class="token value attr-value">1,1</span>
+<span class="token key attr-name">batch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">2048</span>
+<span class="token key attr-name">ubatch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">1024</span>
+<span class="token key attr-name">temp</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span>
+<span class="token key attr-name">top-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.95</span>
+<span class="token key attr-name">top-k</span> <span class="token punctuation">=</span> <span class="token value attr-value">20</span>
+<span class="token key attr-name">min-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">presence-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">repeat-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<h2 id="预期性能表现"><a href="#预期性能表现" class="headerlink" title="预期性能表现"></a>预期性能表现</h2><p>在当前配置下，针对约 72k token 的 Prompt 测试结果：</p>
+<ul>
+<li><strong>Prefill 速度：</strong> 约 1450 t/s</li>
+<li><strong>带 MTP 的解码速度：</strong> 约 45 t/s（高度依赖文本的可预测性）</li>
+<li><strong>单次 Target Forward 耗时：</strong> 短上下文约 53-55 ms，72k 上下文约 62 ms</li>
+<li><strong>性能波动：</strong> 逻辑性强的文本（如代码、结构化输出）接受率高，速度可接近 60 t/s；创意类文本接受率低，速度接近 40 t/s。这种波动属于投机解码的固有特性。</li>
+</ul>
+<hr>
+<p><em>以下为技术细节对比与推理过程。</em></p>
+<h2 id="测量方法论"><a href="#测量方法论" class="headerlink" title="测量方法论"></a>测量方法论</h2><ul>
+<li><strong>核心指标：</strong> <strong>每次 Target Forward 的耗时</strong>。因为 MTP 的接受率会随内容变动，导致原始 tokens/s 波动剧烈。而耗时指标更能真实反映硬件能力。</li>
+<li><strong>统计原则：</strong> 所有数据均源于单次运行。5% 以内的波动视为环境噪声。</li>
+<li><strong>一致性：</strong> 所有测试均开启 <code>-fa on</code>、使用 tensor split、MTP <code>n-max=3</code>。</li>
+</ul>
+<h2 id="发现-1：Tensor-Split-在带-MTP-时优于-Layer-Split"><a href="#发现-1：Tensor-Split-在带-MTP-时优于-Layer-Split" class="headerlink" title="发现 1：Tensor Split 在带 MTP 时优于 Layer Split"></a>发现 1：Tensor Split 在带 MTP 时优于 Layer Split</h2><p>原始 <code>llama-bench</code>（不带投机解码）结果：</p>
+<table>
+<thead>
+<tr>
+<th>分割模式</th>
+<th>tg128 速度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>17.96 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>16.89 t/s</td>
+</tr>
+</tbody></table>
+<p>带 MTP 模式下（同一 Prompt，9 token 起步，生成 256）：</p>
+<table>
+<thead>
+<tr>
+<th>分割模式</th>
+<th>每次 Forward 耗时</th>
+<th>生成速度 (tg)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>79.8 ms</td>
+<td>32.3 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>54.4 ms</td>
+<td>48.8 t/s</td>
+</tr>
+</tbody></table>
+<p><strong>结论：</strong> Tensor 分割在每次 Forward 中快了约 1.47 倍。原因是 MTP 将单次目标转发转化为一个小 Batch（1 个 Bonus token + 最多 3 个 Draft token），小 Batch 极利于多 GPU 并行，而单个 Token 会受限于 allreduce 的延迟。</p>
+<p><strong>教训：</strong> 务必使用你实际运行时的配置进行 Benchmark。单纯的 <code>llama-bench</code> 会误导你保留 Layer Split，实则会让你损失 1/3 的解码吞吐。</p>
+<p>坦白：我最初的 MTP 对比忘了传 <code>-sm</code>，实际上是 layer 和它自己比，然后“验证”了 layer。传对参数，看日志，如果两个配置给出完全相同的数字，先怀疑你的测试脚本，再怀疑硬件。</p>
+<h2 id="发现-2：硬件支持-P2P，但对当前-AllReduce-无效"><a href="#发现-2：硬件支持-P2P，但对当前-AllReduce-无效" class="headerlink" title="发现 2：硬件支持 P2P，但对当前 AllReduce 无效"></a>发现 2：硬件支持 P2P，但对当前 AllReduce 无效</h2><p>硬件端支持 P2P：<code>amdgpu.pcie_p2p=Y</code>，<code>hipDeviceCanAccessPeer</code> 双向返回 1。实测 Peer 直接拷贝约 27 GB/s，而经过 Host 中转约 14 GB/s。</p>
+<p>然而，llama.cpp 内置的双 GPU AllReduce 仍通过 Pinned Host Memory 中转。日志明确显示：
+<code>ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU</code></p>
+<p><code>GGML_CUDA_P2P=1</code> 仅开启了 Peer 权限，并没改变这一路径。实测开启 P2P 时为 59.8 ms/Forward，关闭时为 60.1 ms。纯属噪声。RCCL 也会自己选择传输方式，在那里关掉 P2P 数字也几乎不变。</p>
+<p>如果你用 RCCL 编译，那就做 <code>iommu=pt</code> 这一步。否则 P2P 这个设置可以完全忽略。</p>
+<h2 id="发现-3：RCCL-显著提升-Prefill，但必须配合-NCCL-PROTO-Simple"><a href="#发现-3：RCCL-显著提升-Prefill，但必须配合-NCCL-PROTO-Simple" class="headerlink" title="发现 3：RCCL 显著提升 Prefill，但必须配合 NCCL_PROTO=Simple"></a>发现 3：RCCL 显著提升 Prefill，但必须配合 <code>NCCL_PROTO=Simple</code></h2><p>在 Tensor Split + MTP 模式下，针对 ~35.6k token 的 Prompt：</p>
+<table>
+<thead>
+<tr>
+<th>AllReduce 类型</th>
+<th>Prefill 速度</th>
+<th>每次 Forward 耗时</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>内部（Host 中转）</td>
+<td>1088 t/s</td>
+<td>59.0 ms</td>
+</tr>
+<tr>
+<td>RCCL（默认）</td>
+<td>1446 t/s</td>
+<td>64.2 ms</td>
+</tr>
+<tr>
+<td>RCCL (<code>NCCL_PROTO=Simple</code>)</td>
+<td>1444 t/s</td>
+<td>59.0 ms</td>
+</tr>
+</tbody></table>
+<p>RCCL 提供了约 33% 的 Prefill 收益，但默认协议会让解码变慢 10%。使用 <code>Simple</code> 协议可以保留 Prefill 收益并消除解码惩罚。强行使用 <code>LL</code> 协议会导致 Prefill 崩溃（降至 641 t/s），切勿尝试。</p>
+<p>我也扫了显式列表（<code>Simple</code>、<code>LL128</code>、<code>Simple,LL128</code>、<code>Simple,LL,LL128</code>）。只要列表里包含 <code>Simple</code> 或 <code>LL128</code>，它们彼此之间都在约 1 ms 以内。选 <code>Simple</code> 就行。</p>
+<h2 id="发现-4：-ub-1024-是“免费”的-Prefill-收益"><a href="#发现-4：-ub-1024-是“免费”的-Prefill-收益" class="headerlink" title="发现 4：-ub 1024 是“免费”的 Prefill 收益"></a>发现 4：<code>-ub 1024</code> 是“免费”的 Prefill 收益</h2><p>针对 72k 上下文（两次运行）：</p>
+<table>
+<thead>
+<tr>
+<th>ubatch</th>
+<th>Prefill 速度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>512</td>
+<td>1331 / 1375 t/s</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>1438 / 1492 t/s</td>
+</tr>
+</tbody></table>
+<p>收益约 +8%，而解码速度保持不变。<code>-b 2048</code> 参数依然适用。</p>
+<h2 id="发现-5：此场景下不要量化-KV-Cache"><a href="#发现-5：此场景下不要量化-KV-Cache" class="headerlink" title="发现 5：此场景下不要量化 KV Cache"></a>发现 5：此场景下不要量化 KV Cache</h2><p>在 RCCL + <code>Simple</code> 模式下（72k 上下文）：</p>
+<table>
+<thead>
+<tr>
+<th>KV 类型</th>
+<th>每次 Forward 耗时</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>f16</td>
+<td>63.2 ms</td>
+</tr>
+<tr>
+<td>q8_0</td>
+<td>68.6 ms</td>
+</tr>
+<tr>
+<td>q4_0</td>
+<td>67.8 ms</td>
+</tr>
+</tbody></table>
+<p>KV Cache 占用巨大（约 18 GB）。虽然想通过量化节省空间，但在 Flash Attention 架构下，反量化带来的内核开销超过了节省的带宽。保持 f16 性能最优。</p>
+<h2 id="发现-6：spec-draft-n-max-取决于负载类型"><a href="#发现-6：spec-draft-n-max-取决于负载类型" class="headerlink" title="发现 6：spec-draft-n-max 取决于负载类型"></a>发现 6：<code>spec-draft-n-max</code> 取决于负载类型</h2><p>Tensor Split 模式，生成 384 token：</p>
+<table>
+<thead>
+<tr>
+<th><code>n-max</code></th>
+<th>散文速度</th>
+<th>散文接受率</th>
+<th>代码速度</th>
+<th>代码接受率</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>2</td>
+<td>44.0 t/s</td>
+<td>59.0%</td>
+<td>50.0 t/s</td>
+<td>74.8%</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>48.7 t/s</strong></td>
+<td>54.4%</td>
+<td>58.3 t/s</td>
+<td>72.4%</td>
+</tr>
+<tr>
+<td>4</td>
+<td>42.9 t/s</td>
+<td>38.2%</td>
+<td><strong>62.4 t/s</strong></td>
+<td>69.4%</td>
+</tr>
+<tr>
+<td>5</td>
+<td>46.7 t/s</td>
+<td>40.6%</td>
+<td>57.6 t/s</td>
+<td>55.5%</td>
+</tr>
+</tbody></table>
+<p>每增加一个 Draft token，每次 Forward 耗时约增加 5 ms。只有当 Draft token 被持续接受时，这才是划算的。散文在超过 3 个时可预测性大幅下降；代码则可以。建议混合流量使用 3，纯代码/结构化输出使用 4。</p>
+<h2 id="无效的优化项"><a href="#无效的优化项" class="headerlink" title="无效的优化项"></a>无效的优化项</h2><ul>
+<li><code>-DGGML_HIP_ROCWMMA_FATTN=ON</code>：此版本不支持。</li>
+<li><code>GGML_HIP_MMQ_MFMA=ON</code>：仅对 CDNA 架构有效。</li>
+<li><code>GGML_CUDA_P2P=1</code>：对当前 AllReduce 路径无显著影响。</li>
+<li>KV 量化：反而降低了推理速度。</li>
+</ul>
+<h2 id="注意事项"><a href="#注意事项" class="headerlink" title="注意事项"></a>注意事项</h2><ul>
+<li><strong>环境唯一性：</strong> 数据仅代表我的机器，你的硬件/版本差异会导致数字不同（尤其是 Prefill）。</li>
+<li><strong>MTP 变动性：</strong> 接受率随内容剧烈变动，因此 tokens/s 不是稳定的衡量标准。</li>
+<li><strong>量化差异：</strong> 此测试基于 Q8 量化。Q4 量化虽然解码速度可能翻倍（受限于内存带宽），但会伴随明显的质量损失。</li>
+</ul>
+<p>如果你复现了这些测试但数字不同，我很想听听。</p>
+<hr>
+<h3 id="关键数据清单"><a href="#关键数据清单" class="headerlink" title="关键数据清单"></a>关键数据清单</h3><ul>
+<li><strong>硬件：</strong> 2x Radeon AI PRO R9700 (gfx1201)</li>
+<li><strong>模型：</strong> Qwen3.8-27B-GGUF (UD-Q8_K_XL)</li>
+<li><strong>内核参数：</strong> <code>amd_iommu=on iommu=pt</code></li>
+<li><strong>编译参数：</strong> <code>GGML_HIP=ON</code>, <code>GGML_HIP_RCCL=ON</code>, <code>AMDGPU_TARGETS=gfx1201</code></li>
+<li><strong>核心优化：</strong> <code>NCCL_PROTO=Simple</code>, <code>GGML_CUDA_ALLREDUCE=nccl</code></li>
+<li><strong>MTP 配置：</strong> <code>spec-type=draft-mtp</code>, <code>spec-draft-n-max=3</code></li>
+<li><strong>Tensor Split：</strong> <code>split-mode=tensor</code>, <code>tensor-split=1,1</code></li>
+<li><strong>KV 状态：</strong> 保持 f16（不进行 KV 量化）</li>
+<li><strong>测得性能：</strong> Prefill ~1450 t/s | 解码 ~45-60 t/s (视内容而定)</li>
+</ul>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/blog/images/avatar.gif">
+      <meta itemprop="name" content="Q Gu">
+      <meta itemprop="description" content="Ideas are mine and mine only">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="QGU">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/" class="post-title-link" itemprop="url">Running Qwen3.8-27B (UD-Q8_K_XL) on 2x Radeon AI PRO R9700</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2026-09-22 12:00:00" itemprop="dateCreated datePublished" datetime="2026-09-22T12:00:00+00:00">2026-09-22</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/blog/categories/llm/" itemprop="url" rel="index"><span itemprop="name">llm</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>Languages: <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/">English</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">Français</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">中文</a></p>
+</blockquote>
+<p><strong>Note:</strong> The following data points are derived solely from my personal test environment and do not represent universal conclusions. This post shares the optimal configurations I&#39;ve measured, along with the technical evidence supporting each choice. If you are planning to run the same model on similar hardware, this guide should save you significant trial-and-error time.</p>
+<p><strong>If you only want the configuration, read this section and stop. The comparison and reasoning are located after the horizontal rule.</strong></p>
+<h2 id="Hardware-and-Model-Overview"><a href="#Hardware-and-Model-Overview" class="headerlink" title="Hardware and Model Overview"></a>Hardware and Model Overview</h2><ul>
+<li><strong>CPU:</strong> AMD EPYC 7302 (16 cores / 32 threads)</li>
+<li><strong>RAM:</strong> 125 GB</li>
+<li><strong>GPU:</strong> 2x Radeon AI PRO R9700 (gfx1201, RDNA4), 32 GB each (64 GB total)</li>
+<li><strong>Interconnect:</strong> Each GPU connected to a dedicated PCIe 5.0 x16 lane (on different root complexes)</li>
+<li><strong>Software Environment:</strong> Kernel 6.17, ROCm 7.14</li>
+<li><strong>Inference Framework:</strong> llama.cpp at <code>709fe755d</code> (build 11116)</li>
+</ul>
+<p><strong>Target Model:</strong> <code>unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</code>, size 29.3 GiB.
+<strong>Metadata:</strong> 64 layers, <code>n_head=24</code>, <code>n_head_kv=4</code>, head dim 256, <code>n_ctx_train=262144</code>. The model has no sliding window and includes an MTP head (<code>nextn_predict_layers=1</code>), which makes speculative decoding highly efficient here.</p>
+<h2 id="1-Kernel-IOMMU-Passthrough"><a href="#1-Kernel-IOMMU-Passthrough" class="headerlink" title="1. Kernel: IOMMU Passthrough"></a>1. Kernel: IOMMU Passthrough</h2><p>Add <code>amd_iommu=on iommu=pt</code> to the kernel command line and reboot:</p>
+<pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">BOOT_IMAGE</span><span class="token operator">=</span><span class="token punctuation">..</span>. ro quiet splash <span class="token assign-left variable">amd_iommu</span><span class="token operator">=</span>on <span class="token assign-left variable">iommu</span><span class="token operator">=</span>pt<span aria-hidden="true" class="line-numbers-rows"><span></span></span></code></pre>
+
+<p><em>Note: This is only required for RCCL (step 2). Without it, RCCL will warn about potential hangs in multi-GPU systems.</em></p>
+<h2 id="2-Build-llama-cpp-for-ROCm-with-RCCL"><a href="#2-Build-llama-cpp-for-ROCm-with-RCCL" class="headerlink" title="2. Build llama.cpp for ROCm with RCCL"></a>2. Build llama.cpp for ROCm with RCCL</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash">cmake <span class="token parameter variable">-S</span> <span class="token builtin class-name">.</span> <span class="token parameter variable">-B</span> build-rocm <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DAMDGPU_TARGETS</span><span class="token operator">=</span>gfx1201 <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP_RCCL</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DCMAKE_BUILD_TYPE</span><span class="token operator">=</span>Release
+cmake <span class="token parameter variable">--build</span> build-rocm <span class="token parameter variable">-j</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p><strong>Build Notes to Avoid Redundant Compilations:</strong></p>
+<ul>
+<li><code>GGML_HIP_ROCWMMA_FATTN</code>: This option does not exist in the current revision. Passing it is a no-op (it remains <code>UNINITIALIZED</code> in the cache, and there is no rocWMMA code in the FA path).</li>
+<li><code>GGML_HIP_MMQ_MFMA</code>: Only affects CDNA. It is a no-op on RDNA4; gfx12 WMMA is automatically compiled in.</li>
+</ul>
+<h2 id="3-Execution"><a href="#3-Execution" class="headerlink" title="3. Execution"></a>3. Execution</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">NCCL_PROTO</span><span class="token operator">=</span>Simple <span class="token assign-left variable">GGML_CUDA_ALLREDUCE</span><span class="token operator">=</span>nccl <span class="token punctuation">\</span>
+  ./llama-server <span class="token punctuation">\</span>
+    <span class="token parameter variable">-m</span> Qwen3.8-27B-UD-Q8_K_XL.gguf <span class="token punctuation">\</span>
+    <span class="token parameter variable">-ngl</span> <span class="token number">99</span> <span class="token parameter variable">-fa</span> on <span class="token punctuation">\</span>
+    <span class="token parameter variable">-sm</span> tensor <span class="token parameter variable">-ts</span> <span class="token number">1,1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-b</span> <span class="token number">2048</span> <span class="token parameter variable">-ub</span> <span class="token number">1024</span> <span class="token punctuation">\</span>
+    --spec-type draft-mtp --spec-draft-n-max <span class="token number">3</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--temp</span> <span class="token number">1.0</span> --top-p <span class="token number">0.95</span> --top-k <span class="token number">20</span> --min-p <span class="token number">0</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-c</span> <span class="token number">98304</span> <span class="token parameter variable">-np</span> <span class="token number">1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--host</span> <span class="token number">0.0</span>.0.0 <span class="token parameter variable">--port</span> <span class="token number">8080</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p>The same can be achieved via <code>config.ini</code> in router/preset mode:</p>
+<pre class="line-numbers language-ini" data-language="ini"><code class="language-ini"><span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">*</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">host</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0.0.0</span>
+<span class="token key attr-name">port</span> <span class="token punctuation">=</span> <span class="token value attr-value">8080</span>
+
+<span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">qwen3-27b</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">hf</span> <span class="token punctuation">=</span> <span class="token value attr-value">unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</span>
+<span class="token key attr-name">ngl</span> <span class="token punctuation">=</span> <span class="token value attr-value">99</span>
+<span class="token key attr-name">flash-attn</span> <span class="token punctuation">=</span> <span class="token value attr-value">true</span>
+<span class="token key attr-name">spec-type</span> <span class="token punctuation">=</span> <span class="token value attr-value">draft-mtp</span>
+<span class="token key attr-name">spec-draft-n-max</span> <span class="token punctuation">=</span> <span class="token value attr-value">3</span>
+<span class="token key attr-name">split-mode</span> <span class="token punctuation">=</span> <span class="token value attr-value">tensor</span>
+<span class="token key attr-name">tensor-split</span> <span class="token punctuation">=</span> <span class="token value attr-value">1,1</span>
+<span class="token key attr-name">batch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">2048</span>
+<span class="token key attr-name">ubatch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">1024</span>
+<span class="token key attr-name">temp</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span>
+<span class="token key attr-name">top-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.95</span>
+<span class="token key attr-name">top-k</span> <span class="token punctuation">=</span> <span class="token value attr-value">20</span>
+<span class="token key attr-name">min-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">presence-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">repeat-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<h2 id="Expected-Performance"><a href="#Expected-Performance" class="headerlink" title="Expected Performance"></a>Expected Performance</h2><p>On this machine, for a ~72k-token prompt:</p>
+<ul>
+<li><strong>Prefill Speed:</strong> ~1450 t/s</li>
+<li><strong>Decode with MTP:</strong> ~45 t/s (highly dependent on how predictable the text is)</li>
+<li><strong>Time per Target Forward:</strong> ~53-55 ms at short context, ~62 ms at 72k context</li>
+<li><strong>Performance Variance:</strong> High acceptance (code, structured output) can reach nearly 60 t/s; low acceptance (creative prose) stays near 40 t/s. This fluctuation is an inherent characteristic of speculative decoding.</li>
+</ul>
+<hr>
+<p><em>The following sections contain technical evidence and reasoning.</em></p>
+<h2 id="Methodology"><a href="#Methodology" class="headerlink" title="Methodology"></a>Methodology</h2><ul>
+<li><strong>Metric of Record:</strong> <strong>Milliseconds per Target Forward</strong>, where <code>forwards = predicted_tokens - accepted_draft_tokens</code>. Plain tokens/second is contaminated by MTP acceptance variance. Milliseconds per forward provides a cleaner picture of hardware capability.</li>
+<li><strong>Statistical Principle:</strong> The data comes from single runs. Differences under 5% are treated as environmental noise.</li>
+<li><strong>Consistency:</strong> All tests used <code>-fa on</code>, tensor split, and MTP <code>n-max=3</code> on the aforementioned model.</li>
+</ul>
+<h2 id="Finding-1-Tensor-Split-Beats-Layer-Split-with-MTP"><a href="#Finding-1-Tensor-Split-Beats-Layer-Split-with-MTP" class="headerlink" title="Finding 1: Tensor Split Beats Layer Split with MTP"></a>Finding 1: Tensor Split Beats Layer Split with MTP</h2><p>Raw <code>llama-bench</code> (no speculative decoding) results:</p>
+<table>
+<thead>
+<tr>
+<th>Split Mode</th>
+<th>tg128 Speed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>17.96 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>16.89 t/s</td>
+</tr>
+</tbody></table>
+<p>With MTP (same prompt, 9-token start, 256 generated):</p>
+<table>
+<thead>
+<tr>
+<th>Split Mode</th>
+<th>ms per Target Forward</th>
+<th>Generation Speed (tg)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>79.8 ms</td>
+<td>32.3 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>54.4 ms</td>
+<td>48.8 t/s</td>
+</tr>
+</tbody></table>
+<p><strong>Conclusion:</strong> Tensor split is roughly 1.47x faster per forward here. This is because MTP turns each target forward into a small batch (1 bonus token + up to 3 draft tokens). Small batches parallelize across GPUs, whereas a single token is bottlenecked by allreduce latency.</p>
+<p><strong>Lesson:</strong> Always benchmark using the exact runtime configuration you intend to use. A naive <code>llama-bench</code> would incorrectly suggest keeping Layer Split, which would cost you a third of your decode throughput.</p>
+<p>A confession: my first MTP comparison forgot to pass <code>-sm</code>, so it compared layer to itself and &quot;confirmed&quot; layer. Pass the flags, check the log, and if two configs produce identical numbers, suspect your harness before you suspect the hardware.</p>
+<h2 id="Finding-2-Hardware-Supports-P2P-but-it-39-s-Irrelevant-to-this-AllReduce"><a href="#Finding-2-Hardware-Supports-P2P-but-it-39-s-Irrelevant-to-this-AllReduce" class="headerlink" title="Finding 2: Hardware Supports P2P, but it&#39;s Irrelevant to this AllReduce"></a>Finding 2: Hardware Supports P2P, but it&#39;s Irrelevant to this AllReduce</h2><p>The hardware supports it: <code>amdgpu.pcie_p2p=Y</code>, <code>hipDeviceCanAccessPeer</code> returns 1 both ways. Direct peer copy measures ~27 GB/s versus ~14 GB/s for host-staged copy.</p>
+<p>However, the built-in 2-GPU AllReduce in llama.cpp stages through Pinned Host Memory. The log confirms this:
+<code>ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU</code></p>
+<p><code>GGML_CUDA_P2P=1</code> enables peer access but does not alter the path. Measured with tensor split + MTP: 59.8 ms per forward with P2P on, 60.1 ms with it off. Pure noise. RCCL also picks its own transport, and disabling P2P there barely moves the numbers either.</p>
+<p>If you build with RCCL, do the <code>iommu=pt</code> change. Otherwise P2P is a setting you can ignore.</p>
+<h2 id="Finding-3-RCCL-Boosts-Prefill-but-Requires-NCCL-PROTO-Simple"><a href="#Finding-3-RCCL-Boosts-Prefill-but-Requires-NCCL-PROTO-Simple" class="headerlink" title="Finding 3: RCCL Boosts Prefill, but Requires NCCL_PROTO=Simple"></a>Finding 3: RCCL Boosts Prefill, but Requires <code>NCCL_PROTO=Simple</code></h2><p>In Tensor Split + MTP mode, for a ~35.6k-token prompt:</p>
+<table>
+<thead>
+<tr>
+<th>AllReduce Type</th>
+<th>Prefill Speed</th>
+<th>ms per Target Forward</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Internal (Host-staged)</td>
+<td>1088 t/s</td>
+<td>59.0 ms</td>
+</tr>
+<tr>
+<td>RCCL (Default)</td>
+<td>1446 t/s</td>
+<td>64.2 ms</td>
+</tr>
+<tr>
+<td>RCCL (<code>NCCL_PROTO=Simple</code>)</td>
+<td>1444 t/s</td>
+<td>59.0 ms</td>
+</tr>
+</tbody></table>
+<p>RCCL provides a ~33% prefill boost, but its default protocol selection costs about 10% on decode. Using <code>Simple</code> preserves the prefill gain while removing the decode penalty. Forcing <code>LL</code> alone is disastrous for prefill (drops to 641 t/s); avoid this.</p>
+<p>I also swept the explicit lists (<code>Simple</code>, <code>LL128</code>, <code>Simple,LL128</code>, <code>Simple,LL,LL128</code>). Once the list contains <code>Simple</code> or <code>LL128</code>, they are all within ~1 ms of each other. Pick <code>Simple</code> and move on.</p>
+<h2 id="Finding-4-ub-1024-is-a-quot-Free-quot-Prefill-Gain"><a href="#Finding-4-ub-1024-is-a-quot-Free-quot-Prefill-Gain" class="headerlink" title="Finding 4: -ub 1024 is a &quot;Free&quot; Prefill Gain"></a>Finding 4: <code>-ub 1024</code> is a &quot;Free&quot; Prefill Gain</h2><p>At 72k context (two runs each):</p>
+<table>
+<thead>
+<tr>
+<th>ubatch</th>
+<th>Prefill Speed</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>512</td>
+<td>1331 / 1375 t/s</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>1438 / 1492 t/s</td>
+</tr>
+</tbody></table>
+<p>About +8% gain, while decode speed remains unchanged. <code>-b 2048</code> remains optimal.</p>
+<h2 id="Finding-5-Do-Not-Quantize-the-KV-Cache-here"><a href="#Finding-5-Do-Not-Quantize-the-KV-Cache-here" class="headerlink" title="Finding 5: Do Not Quantize the KV Cache here"></a>Finding 5: Do Not Quantize the KV Cache here</h2><p>At 72k context with RCCL + <code>Simple</code>:</p>
+<table>
+<thead>
+<tr>
+<th>KV Type</th>
+<th>ms per Target Forward</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>f16</td>
+<td>63.2 ms</td>
+</tr>
+<tr>
+<td>q8_0</td>
+<td>68.6 ms</td>
+</tr>
+<tr>
+<td>q4_0</td>
+<td>67.8 ms</td>
+</tr>
+</tbody></table>
+<p>The KV cache is substantial (~18 GB). While it is tempting to shrink it, the dequantization overhead in the attention kernel outweighs the bandwidth savings in a Flash Attention architecture. Keep f16 for optimal performance.</p>
+<h2 id="Finding-6-spec-draft-n-max-is-Workload-Dependent"><a href="#Finding-6-spec-draft-n-max-is-Workload-Dependent" class="headerlink" title="Finding 6: spec-draft-n-max is Workload-Dependent"></a>Finding 6: <code>spec-draft-n-max</code> is Workload-Dependent</h2><p>Tensor Split mode, 384 tokens generated:</p>
+<table>
+<thead>
+<tr>
+<th><code>n-max</code></th>
+<th>Prose Speed</th>
+<th>Prose Accept</th>
+<th>Code Speed</th>
+<th>Code Accept</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>2</td>
+<td>44.0 t/s</td>
+<td>59.0%</td>
+<td>50.0 t/s</td>
+<td>74.8%</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>48.7 t/s</strong></td>
+<td>54.4%</td>
+<td>58.3 t/s</td>
+<td>72.4%</td>
+</tr>
+<tr>
+<td>4</td>
+<td>42.9 t/s</td>
+<td>38.2%</td>
+<td><strong>62.4 t/s</strong></td>
+<td>69.4%</td>
+</tr>
+<tr>
+<td>5</td>
+<td>46.7 t/s</td>
+<td>40.6%</td>
+<td>57.6 t/s</td>
+<td>55.5%</td>
+</tr>
+</tbody></table>
+<p>Each extra draft token costs ~5 ms per forward. This only pays off if the draft tokens are consistently accepted. Prose predictability drops off significantly past 3; code remains viable. Use 3 for mixed traffic, and 4 for code-heavy or structured output workloads.</p>
+<h2 id="Ineffective-Optimizations"><a href="#Ineffective-Optimizations" class="headerlink" title="Ineffective Optimizations"></a>Ineffective Optimizations</h2><ul>
+<li><code>-DGGML_HIP_ROCWMMA_FATTN=ON</code>: Not a valid option in this revision.</li>
+<li><code>GGML_HIP_MMQ_MFMA=ON</code>: CDNA only.</li>
+<li><code>GGML_CUDA_P2P=1</code>: No measurable effect on the current AllReduce path.</li>
+<li>KV Quantization: Actively slower in this configuration.</li>
+</ul>
+<h2 id="Caveats"><a href="#Caveats" class="headerlink" title="Caveats"></a>Caveats</h2><ul>
+<li><strong>Environment Specificity:</strong> Data reflects my specific machine; numbers will differ based on your hardware/versions (especially Prefill).</li>
+<li><strong>MTP Variability:</strong> Acceptance rates fluctuate with content, so tokens/second is not a stable metric.</li>
+<li><strong>Quantization Differences:</strong> This test used Q8. A Q4 quant of the same model might decode roughly twice as fast (as it&#39;s memory-bandwidth bound), but at a noticeable quality cost.</li>
+</ul>
+<p>If you reproduce this and get different numbers, I would like to hear about it.</p>
+<hr>
+<h3 id="Key-Data-Checklist"><a href="#Key-Data-Checklist" class="headerlink" title="Key Data Checklist"></a>Key Data Checklist</h3><ul>
+<li><strong>Hardware:</strong> 2x Radeon AI PRO R9700 (gfx1201)</li>
+<li><strong>Model:</strong> Qwen3.8-27B-GGUF (UD-Q8_K_XL)</li>
+<li><strong>Kernel Params:</strong> <code>amd_iommu=on iommu=pt</code></li>
+<li><strong>Build Params:</strong> <code>GGML_HIP=ON</code>, <code>GGML_HIP_RCCL=ON</code>, <code>AMDGPU_TARGETS=gfx1201</code></li>
+<li><strong>Core Optimizations:</strong> <code>NCCL_PROTO=Simple</code>, <code>GGML_CUDA_ALLREDUCE=nccl</code></li>
+<li><strong>MTP Config:</strong> <code>spec-type=draft-mtp</code>, <code>spec-draft-n-max=3</code></li>
+<li><strong>Tensor Split:</strong> <code>split-mode=tensor</code>, <code>tensor-split=1,1</code></li>
+<li><strong>KV State:</strong> Keep f16 (No KV quantization)</li>
+<li><strong>Measured Performance:</strong> Prefill ~1450 t/s | Decode ~45-60 t/s (content dependent)</li>
+</ul>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
       
   
   
@@ -190,7 +1174,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-05-12 14:47:38" itemprop="dateModified" datetime="2026-05-12T14:47:38+00:00">2026-05-12</time>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -293,7 +1277,7 @@ ImGui::Image(my_tex_id, ImVec2(my_tex_w, my_tex_h), uv_min, uv_max, tint_col, bo
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-05-12 14:47:38" itemprop="dateModified" datetime="2026-05-12T14:47:38+00:00">2026-05-12</time>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -448,7 +1432,7 @@ $$</p>
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-05-12 14:47:38" itemprop="dateModified" datetime="2026-05-12T14:47:38+00:00">2026-05-12</time>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -618,7 +1602,7 @@ int main()
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-05-12 14:47:38" itemprop="dateModified" datetime="2026-05-12T14:47:38+00:00">2026-05-12</time>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -776,7 +1760,7 @@ int main()
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-05-12 14:47:38" itemprop="dateModified" datetime="2026-05-12T14:47:38+00:00">2026-05-12</time>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -868,7 +1852,7 @@ ARTICLE_LANG_SAVE_AS <span class="token operator">=</span> <span class="token st
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2026-05-12 14:47:38" itemprop="dateModified" datetime="2026-05-12T14:47:38+00:00">2026-05-12</time>
+                <time title="Modified: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -992,17 +1976,17 @@ I&#39;m using <code>aboutwilson</code> theme which doesn&#39;t contain the trans
       <div class="site-state-item site-state-posts">
           <a href="/blog/archives/">
         
-          <span class="site-state-item-count">6</span>
-          <span class="site-state-item-name">posts</span>
+          <span class="site-state-item-count">9</span>
+          <span class="site-state-item-name">articles</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
-        <span class="site-state-item-count">4</span>
-        <span class="site-state-item-name">categories</span>
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">catégories</span>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">5</span>
-        <span class="site-state-item-name">tags</span>
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">mots clé</span>
       </div>
   </nav>
 </div>
@@ -1034,7 +2018,7 @@ I&#39;m using <code>aboutwilson</code> theme which doesn&#39;t contain the trans
   </span>
   <span class="author" itemprop="copyrightHolder">Q Gu</span>
 </div>
-  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a>
+  <div class="powered-by">Propulsé par <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a>
   </div>
 
         

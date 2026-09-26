@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/blog/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/blog/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/blog/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/blog/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/blog/css/main.css">
+
+
+<link rel="stylesheet" href="/blog/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"qgu.io","root":"/blog/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="Langues : English | Français | 中文  Note : Ceci est un point de données, pas une vérité absolue. C&#39;est une configuration que j&#39;ai mesurée sur ma machine, avec les preuves derrière chaque choix">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Faire tourner Qwen3.8-27B (UD-Q8_K_XL) sur 2x Radeon AI PRO R9700">
+<meta property="og:url" content="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/index.html">
+<meta property="og:site_name" content="QGU">
+<meta property="og:description" content="Langues : English | Français | 中文  Note : Ceci est un point de données, pas une vérité absolue. C&#39;est une configuration que j&#39;ai mesurée sur ma machine, avec les preuves derrière chaque choix">
+<meta property="og:locale" content="fr_FR">
+<meta property="article:published_time" content="2026-09-22T12:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-26T04:45:05.583Z">
+<meta property="article:author" content="Q Gu">
+<meta property="article:tag" content="llama.cpp, ROCm, R9700, Qwen3.8, LocalLLaMA">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'fr'
+  };
+</script>
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: {'[+]': [['$', '$'], ['\\(', '\\)']]}
+    },
+    startup: {
+      pageReady: () => MathJax.startup.defaultPageReady()
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+
+  <title>Faire tourner Qwen3.8-27B (UD-Q8_K_XL) sur 2x Radeon AI PRO R9700 | QGU</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Basculer la barre de navigation">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/blog/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">QGU</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Quantum Gravity Unitarity</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/blog/" rel="section"><i class="fa fa-fw fa-home"></i>Accueil</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/blog/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>Archives</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="fr">
+    <link itemprop="mainEntityOfPage" href="https://qgu.io/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/blog/images/avatar.gif">
+      <meta itemprop="name" content="Q Gu">
+      <meta itemprop="description" content="Ideas are mine and mine only">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="QGU">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Faire tourner Qwen3.8-27B (UD-Q8_K_XL) sur 2x Radeon AI PRO R9700
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">Posté le</span>
+
+              <time title="Article créé le: 2026-09-22 12:00:00" itemprop="dateCreated datePublished" datetime="2026-09-22T12:00:00+00:00">2026-09-22</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">Édité le</span>
+                <time title="Mis à jour le: 2026-09-26 04:45:05" itemprop="dateModified" datetime="2026-09-26T04:45:05+00:00">2026-09-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">dans</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/blog/categories/llm/" itemprop="url" rel="index"><span itemprop="name">llm</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <blockquote>
+<p>Langues : <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700/">English</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/">Français</a> | <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/">中文</a></p>
+</blockquote>
+<p><strong>Note :</strong> Ceci est un point de données, pas une vérité absolue. C&#39;est une configuration que j&#39;ai mesurée sur ma machine, avec les preuves derrière chaque choix. Si vous faites tourner le même modèle sur le même type de matériel, cela devrait vous économiser un week-end de tests.</p>
+<p><strong>Si vous voulez seulement la configuration, lisez cette section et arrêtez-vous. La comparaison et le raisonnement viennent après la ligne horizontale.</strong></p>
+<h2 id="Materiel-et-modele"><a href="#Materiel-et-modele" class="headerlink" title="Matériel et modèle"></a>Matériel et modèle</h2><ul>
+<li><strong>CPU :</strong> AMD EPYC 7302 (16 coeurs / 32 threads)</li>
+<li><strong>RAM :</strong> 125 Go</li>
+<li><strong>GPU :</strong> 2x Radeon AI PRO R9700 (gfx1201, RDNA4), 32 Go chacune (64 Go au total)</li>
+<li><strong>Interconnexion :</strong> Chaque GPU sur PCIe 5.0 x16, sur des complexes racine différents</li>
+<li><strong>Environnement logiciel :</strong> Noyau 6.17, ROCm 7.14</li>
+<li><strong>Framework d&#39;inférence :</strong> llama.cpp à la version <code>709fe755d</code> (build 11116)</li>
+</ul>
+<p><strong>Modèle cible :</strong> <code>unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</code>, taille 29,3 Gio.
+<strong>Métadonnées :</strong> 64 couches, <code>n_head=24</code>, <code>n_head_kv=4</code>, dimension de tête 256, <code>n_ctx_train=262144</code>. Le modèle n&#39;utilise pas de fenêtre glissante et inclut une tête MTP (<code>nextn_predict_layers=1</code>), ce qui rend le décodage spéculatif très efficace ici.</p>
+<h2 id="1-Noyau-passthrough-IOMMU"><a href="#1-Noyau-passthrough-IOMMU" class="headerlink" title="1. Noyau : passthrough IOMMU"></a>1. Noyau : passthrough IOMMU</h2><p>Ajoutez <code>amd_iommu=on iommu=pt</code> à la ligne de commande du noyau, puis redémarrez :</p>
+<pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">BOOT_IMAGE</span><span class="token operator">=</span><span class="token punctuation">..</span>. ro quiet splash <span class="token assign-left variable">amd_iommu</span><span class="token operator">=</span>on <span class="token assign-left variable">iommu</span><span class="token operator">=</span>pt<span aria-hidden="true" class="line-numbers-rows"><span></span></span></code></pre>
+
+<p><em>Note : Vous n&#39;en avez besoin que pour RCCL (étape 2). Sans cela, RCCL avertit d&#39;un risque de blocage sur les systèmes multi-GPU.</em></p>
+<h2 id="2-Compiler-llama-cpp-pour-ROCm-avec-RCCL"><a href="#2-Compiler-llama-cpp-pour-ROCm-avec-RCCL" class="headerlink" title="2. Compiler llama.cpp pour ROCm avec RCCL"></a>2. Compiler llama.cpp pour ROCm avec RCCL</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash">cmake <span class="token parameter variable">-S</span> <span class="token builtin class-name">.</span> <span class="token parameter variable">-B</span> build-rocm <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DAMDGPU_TARGETS</span><span class="token operator">=</span>gfx1201 <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DGGML_HIP_RCCL</span><span class="token operator">=</span>ON <span class="token punctuation">\</span>
+  <span class="token parameter variable">-DCMAKE_BUILD_TYPE</span><span class="token operator">=</span>Release
+cmake <span class="token parameter variable">--build</span> build-rocm <span class="token parameter variable">-j</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p><strong>Conseils de compilation pour éviter une recompilation inutile :</strong></p>
+<ul>
+<li><code>GGML_HIP_ROCWMMA_FATTN</code> : Cette option n&#39;existe pas dans cette révision. La passer ne fait rien (elle reste <code>UNINITIALIZED</code> dans le cache, et il n&#39;y a pas de code rocWMMA dans le chemin FA).</li>
+<li><code>GGML_HIP_MMQ_MFMA</code> : Ne concerne que CDNA. Sur RDNA4, c&#39;est sans effet ; le WMMA de gfx12 est compilé automatiquement.</li>
+</ul>
+<h2 id="3-Lancer-l-39-execution"><a href="#3-Lancer-l-39-execution" class="headerlink" title="3. Lancer l&#39;exécution"></a>3. Lancer l&#39;exécution</h2><pre class="line-numbers language-bash" data-language="bash"><code class="language-bash"><span class="token assign-left variable">NCCL_PROTO</span><span class="token operator">=</span>Simple <span class="token assign-left variable">GGML_CUDA_ALLREDUCE</span><span class="token operator">=</span>nccl <span class="token punctuation">\</span>
+  ./llama-server <span class="token punctuation">\</span>
+    <span class="token parameter variable">-m</span> Qwen3.8-27B-UD-Q8_K_XL.gguf <span class="token punctuation">\</span>
+    <span class="token parameter variable">-ngl</span> <span class="token number">99</span> <span class="token parameter variable">-fa</span> on <span class="token punctuation">\</span>
+    <span class="token parameter variable">-sm</span> tensor <span class="token parameter variable">-ts</span> <span class="token number">1,1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-b</span> <span class="token number">2048</span> <span class="token parameter variable">-ub</span> <span class="token number">1024</span> <span class="token punctuation">\</span>
+    --spec-type draft-mtp --spec-draft-n-max <span class="token number">3</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--temp</span> <span class="token number">1.0</span> --top-p <span class="token number">0.95</span> --top-k <span class="token number">20</span> --min-p <span class="token number">0</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">-c</span> <span class="token number">98304</span> <span class="token parameter variable">-np</span> <span class="token number">1</span> <span class="token punctuation">\</span>
+    <span class="token parameter variable">--host</span> <span class="token number">0.0</span>.0.0 <span class="token parameter variable">--port</span> <span class="token number">8080</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<p>La même chose via un fichier <code>config.ini</code>, si vous utilisez le mode routeur :</p>
+<pre class="line-numbers language-ini" data-language="ini"><code class="language-ini"><span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">*</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">host</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0.0.0</span>
+<span class="token key attr-name">port</span> <span class="token punctuation">=</span> <span class="token value attr-value">8080</span>
+
+<span class="token section"><span class="token punctuation">[</span><span class="token section-name selector">qwen3-27b</span><span class="token punctuation">]</span></span>
+<span class="token key attr-name">hf</span> <span class="token punctuation">=</span> <span class="token value attr-value">unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL</span>
+<span class="token key attr-name">ngl</span> <span class="token punctuation">=</span> <span class="token value attr-value">99</span>
+<span class="token key attr-name">flash-attn</span> <span class="token punctuation">=</span> <span class="token value attr-value">true</span>
+<span class="token key attr-name">spec-type</span> <span class="token punctuation">=</span> <span class="token value attr-value">draft-mtp</span>
+<span class="token key attr-name">spec-draft-n-max</span> <span class="token punctuation">=</span> <span class="token value attr-value">3</span>
+<span class="token key attr-name">split-mode</span> <span class="token punctuation">=</span> <span class="token value attr-value">tensor</span>
+<span class="token key attr-name">tensor-split</span> <span class="token punctuation">=</span> <span class="token value attr-value">1,1</span>
+<span class="token key attr-name">batch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">2048</span>
+<span class="token key attr-name">ubatch-size</span> <span class="token punctuation">=</span> <span class="token value attr-value">1024</span>
+<span class="token key attr-name">temp</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span>
+<span class="token key attr-name">top-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.95</span>
+<span class="token key attr-name">top-k</span> <span class="token punctuation">=</span> <span class="token value attr-value">20</span>
+<span class="token key attr-name">min-p</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">presence-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">0.0</span>
+<span class="token key attr-name">repeat-penalty</span> <span class="token punctuation">=</span> <span class="token value attr-value">1.0</span><span aria-hidden="true" class="line-numbers-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></code></pre>
+
+<h2 id="A-quoi-s-39-attendre"><a href="#A-quoi-s-39-attendre" class="headerlink" title="À quoi s&#39;attendre"></a>À quoi s&#39;attendre</h2><p>Sur un prompt d&#39;environ 72k tokens sur cette machine :</p>
+<ul>
+<li><strong>Vitesse de Prefill :</strong> environ 1450 t/s</li>
+<li><strong>Décodage avec MTP :</strong> environ 45 t/s (très dépendant de la prévisibilité du texte)</li>
+<li><strong>Temps par passe cible :</strong> environ 53-55 ms en contexte court, environ 62 ms à 72k de contexte</li>
+<li><strong>Variabilité :</strong> Une acceptation élevée (code, sortie structurée) peut atteindre près de 60 t/s ; une acceptation faible (prose créative) avoisine les 40 t/s. Cette fluctuation est inhérente au décodage spéculatif.</li>
+</ul>
+<hr>
+<p><em>Tout ce qui suit est la preuve. Arrêtez-vous ici si vous voulez seulement la configuration.</em></p>
+<h2 id="Methodologie-de-mesure"><a href="#Methodologie-de-mesure" class="headerlink" title="Méthodologie de mesure"></a>Méthodologie de mesure</h2><ul>
+<li><strong>Indicateur de référence :</strong> <strong>Millisecondes par passe cible</strong>, où <code>passes = tokens_prédits - tokens_brouillon_acceptés</code>. Le débit brut en tokens/seconde est faussé par le taux d&#39;acceptation du MTP. Les millisecondes par passe reflètent mieux la capacité matérielle.</li>
+<li><strong>Principes statistiques :</strong> Toutes les données proviennent d&#39;exécutions uniques. Considérez les écarts inférieurs à 5 % comme du bruit.</li>
+<li><strong>Cohérence :</strong> Toutes les mesures utilisent <code>-fa on</code>, le split tensor et MTP <code>n-max=3</code> sur le modèle ci-dessus.</li>
+</ul>
+<h2 id="Constat-1-Le-split-Tensor-bat-le-split-Layer-avec-MTP"><a href="#Constat-1-Le-split-Tensor-bat-le-split-Layer-avec-MTP" class="headerlink" title="Constat 1 : Le split Tensor bat le split Layer avec MTP"></a>Constat 1 : Le split Tensor bat le split Layer avec MTP</h2><p>Résultats de <code>llama-bench</code> brut (sans décodage spéculatif) :</p>
+<table>
+<thead>
+<tr>
+<th>Mode de split</th>
+<th>Vitesse tg128</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>17,96 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>16,89 t/s</td>
+</tr>
+</tbody></table>
+<p>Avec MTP (même prompt, départ à 9 tokens, 256 générés) :</p>
+<table>
+<thead>
+<tr>
+<th>Mode de split</th>
+<th>ms par passe cible</th>
+<th>Vitesse gén. (tg)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Layer</td>
+<td>79,8 ms</td>
+<td>32,3 t/s</td>
+</tr>
+<tr>
+<td>Tensor</td>
+<td>54,4 ms</td>
+<td>48,8 t/s</td>
+</tr>
+</tbody></table>
+<p><strong>Conclusion :</strong> Le split Tensor est environ 1,47x plus rapide par passe ici. La raison est que MTP transforme chaque passe cible en un petit lot (1 token bonus + jusqu&#39;à 3 tokens brouillons). Un petit lot se parallélise sur les GPU, alors qu&#39;un seul token est limité par la latence de l&#39;allreduce.</p>
+<p><strong>Leçon :</strong> Mesurez toujours avec la configuration exacte que vous allez utiliser. Un benchmark sans décodage spéculatif vous aurait fait garder le split Layer, ce qui vous coûterait un tiers de votre débit de décodage.</p>
+<p>Confession : ma première comparaison MTP avait oublié de passer <code>-sm</code>, donc elle comparait layer avec lui-même et « confirmait » layer. Passez les flags, vérifiez le log, et si deux configurations donnent des chiffres identiques, soupçonnez votre harnais avant de soupçonner le matériel.</p>
+<h2 id="Constat-2-Le-P2P-est-reel-sur-ce-materiel-mais-sans-effet-sur-cet-AllReduce"><a href="#Constat-2-Le-P2P-est-reel-sur-ce-materiel-mais-sans-effet-sur-cet-AllReduce" class="headerlink" title="Constat 2 : Le P2P est réel sur ce matériel, mais sans effet sur cet AllReduce"></a>Constat 2 : Le P2P est réel sur ce matériel, mais sans effet sur cet AllReduce</h2><p>Le matériel supporte le P2P : <code>amdgpu.pcie_p2p=Y</code>, <code>hipDeviceCanAccessPeer</code> renvoie 1 dans les deux sens. Copie directe entre pairs mesurée à ~27 Go/s contre ~14 Go/s via l&#39;hôte.</p>
+<p>Cependant, l&#39;AllReduce 2-GPU intégré à llama.cpp passe par de la mémoire hôte épinglée. Le log le confirme directement :
+<code>ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU</code></p>
+<p><code>GGML_CUDA_P2P=1</code> active la permission, mais ne change pas ce chemin. Mesuré avec split Tensor + MTP : 59,8 ms par passe avec P2P, 60,1 ms sans. Bruit pur. RCCL choisit aussi son propre transport, et y désactiver le P2P ne change presque pas les chiffres.</p>
+<p>Si vous compilez avec RCCL, faites le changement <code>iommu=pt</code>. Sinon, le P2P est un réglage que vous pouvez ignorer.</p>
+<h2 id="Constat-3-RCCL-booste-le-Prefill-mais-necessite-NCCL-PROTO-Simple"><a href="#Constat-3-RCCL-booste-le-Prefill-mais-necessite-NCCL-PROTO-Simple" class="headerlink" title="Constat 3 : RCCL booste le Prefill, mais nécessite NCCL_PROTO=Simple"></a>Constat 3 : RCCL booste le Prefill, mais nécessite <code>NCCL_PROTO=Simple</code></h2><p>En mode Tensor Split + MTP, pour un prompt de ~35,6k tokens :</p>
+<table>
+<thead>
+<tr>
+<th>Type AllReduce</th>
+<th>Vitesse Prefill</th>
+<th>ms par passe cible</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Interne (staging hôte)</td>
+<td>1088 t/s</td>
+<td>59,0 ms</td>
+</tr>
+<tr>
+<td>RCCL (défaut)</td>
+<td>1446 t/s</td>
+<td>64,2 ms</td>
+</tr>
+<tr>
+<td>RCCL (<code>NCCL_PROTO=Simple</code>)</td>
+<td>1444 t/s</td>
+<td>59,0 ms</td>
+</tr>
+</tbody></table>
+<p>RCCL offre un gain de Prefill de ~33 %, mais son protocole par défaut coûte environ 10 % en décodage. <code>Simple</code> préserve le gain de Prefill et élimine la pénalité de décodage. Forcer <code>LL</code> seul est catastrophique pour le Prefill (chute à 641 t/s), ne le faites pas.</p>
+<p>J&#39;ai aussi testé les listes explicites (<code>Simple</code>, <code>LL128</code>, <code>Simple,LL128</code>, <code>Simple,LL,LL128</code>). Dès que la liste contient <code>Simple</code> ou <code>LL128</code>, elles sont toutes à environ 1 ms les unes des autres. Prenez <code>Simple</code> et passez à autre chose.</p>
+<h2 id="Constat-4-ub-1024-est-un-gain-de-Prefill-quot-gratuit-quot"><a href="#Constat-4-ub-1024-est-un-gain-de-Prefill-quot-gratuit-quot" class="headerlink" title="Constat 4 : -ub 1024 est un gain de Prefill &quot;gratuit&quot;"></a>Constat 4 : <code>-ub 1024</code> est un gain de Prefill &quot;gratuit&quot;</h2><p>À 72k de contexte (deux exécutions chacune) :</p>
+<table>
+<thead>
+<tr>
+<th>ubatch</th>
+<th>Vitesse Prefill</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>512</td>
+<td>1331 / 1375 t/s</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>1438 / 1492 t/s</td>
+</tr>
+</tbody></table>
+<p>Gain d&#39;environ +8 %, débit de décodage inchangé. <code>-b 2048</code> reste optimal.</p>
+<h2 id="Constat-5-Ne-quantifiez-pas-le-cache-KV-ici"><a href="#Constat-5-Ne-quantifiez-pas-le-cache-KV-ici" class="headerlink" title="Constat 5 : Ne quantifiez pas le cache KV ici"></a>Constat 5 : Ne quantifiez pas le cache KV ici</h2><p>À 72k de contexte avec RCCL + <code>Simple</code> :</p>
+<table>
+<thead>
+<tr>
+<th>Type KV</th>
+<th>ms par passe cible</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>f16</td>
+<td>63,2 ms</td>
+</tr>
+<tr>
+<td>q8_0</td>
+<td>68,6 ms</td>
+</tr>
+<tr>
+<td>q4_0</td>
+<td>67,8 ms</td>
+</tr>
+</tbody></table>
+<p>Le cache KV est massif ici (~18 Go). Bien qu&#39;il soit tentant de le réduire, le coût de déquantification dans le noyau d&#39;attention est supérieur à la bande passante gagnée avec le Flash Attention. Gardez f16 pour une performance optimale.</p>
+<h2 id="Constat-6-spec-draft-n-max-depend-du-type-de-charge"><a href="#Constat-6-spec-draft-n-max-depend-du-type-de-charge" class="headerlink" title="Constat 6 : spec-draft-n-max dépend du type de charge"></a>Constat 6 : <code>spec-draft-n-max</code> dépend du type de charge</h2><p>Mode Tensor Split, 384 tokens générés :</p>
+<table>
+<thead>
+<tr>
+<th><code>n-max</code></th>
+<th>Vitesse prose</th>
+<th>Accept. prose</th>
+<th>Vitesse code</th>
+<th>Accept. code</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>2</td>
+<td>44,0 t/s</td>
+<td>59,0%</td>
+<td>50,0 t/s</td>
+<td>74,8%</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>48,7 t/s</strong></td>
+<td>54,4%</td>
+<td>58,3 t/s</td>
+<td>72,4%</td>
+</tr>
+<tr>
+<td>4</td>
+<td>42,9 t/s</td>
+<td>38,2%</td>
+<td><strong>62,4 t/s</strong></td>
+<td>69,4%</td>
+</tr>
+<tr>
+<td>5</td>
+<td>46,7 t/s</td>
+<td>40,6%</td>
+<td>57,6 t/s</td>
+<td>55,5%</td>
+</tr>
+</tbody></table>
+<p>Chaque jeton brouillon supplémentaire coûte environ 5 ms par passe. Cela n&#39;en vaut la peine que si les jetons brouillons sont continuellement acceptés. La prose perd sa prévisibilité après 3 ; le code reste viable. Utilisez 3 pour un trafic mixte, et 4 si votre charge est principalement du code ou de la sortie structurée.</p>
+<h2 id="Optimisations-inefficaces"><a href="#Optimisations-inefficaces" class="headerlink" title="Optimisations inefficaces"></a>Optimisations inefficaces</h2><ul>
+<li><code>-DGGML_HIP_ROCWMMA_FATTN=ON</code> : Option inexistante dans cette révision.</li>
+<li><code>GGML_HIP_MMQ_MFMA=ON</code> : CDNA uniquement.</li>
+<li><code>GGML_CUDA_P2P=1</code> : Aucun effet mesurable sur le chemin AllReduce actuel.</li>
+<li>Quantification KV : Rend l&#39;inférence activement plus lente.</li>
+</ul>
+<h2 id="Reserves"><a href="#Reserves" class="headerlink" title="Réserves"></a>Réserves</h2><ul>
+<li><strong>Spécificité de l&#39;environnement :</strong> Les données ne représentent que ma machine ; vos chiffres varieront en fonction de votre matériel/versions (surtout le Prefill).</li>
+<li><strong>Variabilité du MTP :</strong> Le taux d&#39;acceptation fluctue selon le contenu, donc les tokens/seconde ne sont pas une mesure stable.</li>
+<li><strong>Différences de quantification :</strong> Ce test est basé sur Q8. Un quant Q4 du même modèle pourrait décoder environ deux fois plus vite (car le décodage est limité par la bande passante mémoire), au prix d&#39;une perte de qualité notable.</li>
+</ul>
+<p>Si vous reproduisez ceci et obtenez des chiffres différents, j&#39;aimerais le savoir.</p>
+<hr>
+<h3 id="Liste-de-verification-des-donnees-cles"><a href="#Liste-de-verification-des-donnees-cles" class="headerlink" title="Liste de vérification des données clés"></a>Liste de vérification des données clés</h3><ul>
+<li><strong>Matériel :</strong> 2x Radeon AI PRO R9700 (gfx1201)</li>
+<li><strong>Modèle :</strong> Qwen3.8-27B-GGUF (UD-Q8_K_XL)</li>
+<li><strong>Paramètres noyau :</strong> <code>amd_iommu=on iommu=pt</code></li>
+<li><strong>Paramètres compilation :</strong> <code>GGML_HIP=ON</code>, <code>GGML_HIP_RCCL=ON</code>, <code>AMDGPU_TARGETS=gfx1201</code></li>
+<li><strong>Optimisations clés :</strong> <code>NCCL_PROTO=Simple</code>, <code>GGML_CUDA_ALLREDUCE=nccl</code></li>
+<li><strong>Configuration MTP :</strong> <code>spec-type=draft-mtp</code>, <code>spec-draft-n-max=3</code></li>
+<li><strong>Tensor Split :</strong> <code>split-mode=tensor</code>, <code>tensor-split=1,1</code></li>
+<li><strong>État KV :</strong> Conserver f16 (Pas de quantification KV)</li>
+<li><strong>Performances mesurées :</strong> Prefill ~1450 t/s | Décodage ~45-60 t/s (selon le contenu)</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/blog/tags/llama-cpp-ROCm-R9700-Qwen3-8-LocalLLaMA/" rel="tag"># llama.cpp, ROCm, R9700, Qwen3.8, LocalLLaMA</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/" rel="prev" title="在双 Radeon AI PRO R9700 上运行 Qwen3.8-27B (UD-Q8_K_XL)">
+      <i class="fa fa-chevron-left"></i> 在双 Radeon AI PRO R9700 上运行 Qwen3.8-27B (UD-Q8_K_XL)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table Des Matières
+        </li>
+        <li class="sidebar-nav-overview">
+          Aperçu
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Materiel-et-modele"><span class="nav-number">1.</span> <span class="nav-text">Matériel et modèle</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-Noyau-passthrough-IOMMU"><span class="nav-number">2.</span> <span class="nav-text">1. Noyau : passthrough IOMMU</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-Compiler-llama-cpp-pour-ROCm-avec-RCCL"><span class="nav-number">3.</span> <span class="nav-text">2. Compiler llama.cpp pour ROCm avec RCCL</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-Lancer-l-39-execution"><span class="nav-number">4.</span> <span class="nav-text">3. Lancer l&#39;exécution</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#A-quoi-s-39-attendre"><span class="nav-number">5.</span> <span class="nav-text">À quoi s&#39;attendre</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Methodologie-de-mesure"><span class="nav-number">6.</span> <span class="nav-text">Méthodologie de mesure</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Constat-1-Le-split-Tensor-bat-le-split-Layer-avec-MTP"><span class="nav-number">7.</span> <span class="nav-text">Constat 1 : Le split Tensor bat le split Layer avec MTP</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Constat-2-Le-P2P-est-reel-sur-ce-materiel-mais-sans-effet-sur-cet-AllReduce"><span class="nav-number">8.</span> <span class="nav-text">Constat 2 : Le P2P est réel sur ce matériel, mais sans effet sur cet AllReduce</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Constat-3-RCCL-booste-le-Prefill-mais-necessite-NCCL-PROTO-Simple"><span class="nav-number">9.</span> <span class="nav-text">Constat 3 : RCCL booste le Prefill, mais nécessite NCCL_PROTO&#x3D;Simple</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Constat-4-ub-1024-est-un-gain-de-Prefill-quot-gratuit-quot"><span class="nav-number">10.</span> <span class="nav-text">Constat 4 : -ub 1024 est un gain de Prefill &quot;gratuit&quot;</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Constat-5-Ne-quantifiez-pas-le-cache-KV-ici"><span class="nav-number">11.</span> <span class="nav-text">Constat 5 : Ne quantifiez pas le cache KV ici</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Constat-6-spec-draft-n-max-depend-du-type-de-charge"><span class="nav-number">12.</span> <span class="nav-text">Constat 6 : spec-draft-n-max dépend du type de charge</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Optimisations-inefficaces"><span class="nav-number">13.</span> <span class="nav-text">Optimisations inefficaces</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Reserves"><span class="nav-number">14.</span> <span class="nav-text">Réserves</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Liste-de-verification-des-donnees-cles"><span class="nav-number">14.1.</span> <span class="nav-text">Liste de vérification des données clés</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Q Gu</p>
+  <div class="site-description" itemprop="description">Ideas are mine and mine only</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/blog/archives/">
+        
+          <span class="site-state-item-count">9</span>
+          <span class="site-state-item-name">articles</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">catégories</span>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">mots clé</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Q Gu</span>
+</div>
+  <div class="powered-by">Propulsé par <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/blog/lib/anime.min.js"></script>
+  <script src="/blog/lib/velocity/velocity.min.js"></script>
+  <script src="/blog/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/blog/js/utils.js"></script>
+
+<script src="/blog/js/motion.js"></script>
+
+
+<script src="/blog/js/schemes/muse.js"></script>
+
+
+<script src="/blog/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
