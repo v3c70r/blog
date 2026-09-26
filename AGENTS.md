@@ -150,23 +150,9 @@ gh pr create --repo v3c70r/blog --base main --head post/<slug>
 - Do not post comments or reviews on a PR on the author's behalf unless you are
   explicitly asked to.
 
-## Harness support
+## Note
 
-The canonical instructions are `AGENTS.md`. Other tools read their own files,
-which summarize or point back here:
-
-| harness | file |
-|---------|------|
-| Codex, Cursor, Zed, opencode, pi, Jules, and most `AGENTS.md` readers | `AGENTS.md` |
-| Claude Code | `CLAUDE.md` |
-| Gemini CLI | `GEMINI.md` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
-| Cursor native rules | `.cursor/rules/hexo-blog.mdc` |
-| Aider | `.aider.conf.yml`, `CONVENTIONS.md` |
-| Windsurf | `.windsurfrules` |
-| Cline | `.clinerules` |
-| Goose | `.goosehints` |
-| Roo Code | `.roo/rules/blog.md` |
-
-When these rules change, update `AGENTS.md` first, then keep the pointers in
-sync.
+This is the only agent guide in the repo. Most harnesses read `AGENTS.md`
+directly. If you use one that only looks for a fixed filename (for example
+Claude Code's `CLAUDE.md` or Gemini CLI's `GEMINI.md`), symlink that filename to
+this file instead of duplicating the content.

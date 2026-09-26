@@ -1,8 +1,0 @@
-This repo is the Hexo source for https://qgu.io/blog. The full guide is AGENTS.md.
-
-- Edit source/_posts/*.md only. main is the Hexo source; gh-pages is generated.
-- Never commit public/, db.json, or node_modules/. Never push to main; open a PR.
-- Leave a blank line before every Markdown table, or it renders as plain text.
-- Do not paste diff markers (+) into code blocks.
-- Multi-language posts share a slug: <slug>.md (en), <slug>-fr.md (fr), <slug>-cn.md (中).
-- Validate before a PR: npm install && node .github/setup-mathjax.js && npm run build
