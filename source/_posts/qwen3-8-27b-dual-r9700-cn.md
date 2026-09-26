@@ -9,7 +9,7 @@ author: Qing Gu
 summary: 在两张 Radeon AI PRO R9700 上使用 llama.cpp 和 ROCm 运行 Qwen3.8-27B UD-Q8_K_XL 的最佳配置与实测证据。
 ---
 
-> 语言：[English](/blog/2026/09/22/qwen3-8-27b-dual-r9700/) | [Francais](/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/) | [中文](/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/)
+> 语言：[English](/blog/2026/09/22/qwen3-8-27b-dual-r9700/) | [Français](/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/) | [中文](/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/)
 
 **注意：** 以下数据仅源于我的个人测试环境，不代表最终结论。本文旨在分享我实测出的最优配置及其背后的技术支撑。如果你正计划在同类硬件上运行相同模型，这份实测指南将帮你节省大量的试错成本。
 
@@ -25,7 +25,7 @@ summary: 在两张 Radeon AI PRO R9700 上使用 llama.cpp 和 ROCm 运行 Qwen3
 - **推理框架：** llama.cpp 版本 `709fe755d`（build 11116）
 
 **目标模型：** `unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL`，模型大小 29.3 GiB。
-**模型元数据：** 64 层，`n_head=24`，`n_head_kv=4`，head dim 256，`n_ctx_train=262144`。模型支持滑动窗口并带有一个 MTP 头（`nextn_predict_layers=1`），这使得投机解码（Speculative Decoding）在这里非常高效。
+**模型元数据：** 64 层，`n_head=24`，`n_head_kv=4`，head dim 256，`n_ctx_train=262144`。模型无滑动窗口并带有一个 MTP 头（`nextn_predict_layers=1`），这使得投机解码（Speculative Decoding）在这里非常高效。
 
 ## 1. 内核：IOMMU Passthrough
 
@@ -49,7 +49,7 @@ cmake --build build-rocm -j
 ```
 
 **编译避坑指南：**
-- `GGML_HIP_ROCWMMA_FATTN`：当前版本不支持该选项，传参无效（Cache 中始终为 `UNINITIALIZED`）。
+- `GGML_HIP_ROCWMMA_FATTN`：当前版本不支持该选项，传参无效（Cache 中始终为 `UNINITIALIZED`，且 FA 路径中没有 rocWMMA 代码）。
 - `GGML_HIP_MMQ_MFMA`：仅对 CDNA 架构有效。在 RDNA4 上无任何影响，gfx12 的 WMMA 代码会自动编译入库。
 
 ## 3. 启动命令
@@ -74,7 +74,7 @@ NCCL_PROTO=Simple GGML_CUDA_ALLREDUCE=nccl \
 host = 0.0.0.0
 port = 8080
 
-+[qwen3-27b]
+[qwen3-27b]
 hf = unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL
 ngl = 99
 flash-attn = true
@@ -114,12 +114,14 @@ repeat-penalty = 1.0
 ## 发现 1：Tensor Split 在带 MTP 时优于 Layer Split
 
 原始 `llama-bench`（不带投机解码）结果：
+
 | 分割模式 | tg128 速度 |
 |---|---|
 | Layer | 17.96 t/s |
 | Tensor | 16.89 t/s |
 
 带 MTP 模式下（同一 Prompt，9 token 起步，生成 256）：
+
 | 分割模式 | 每次 Forward 耗时 | 生成速度 (tg) |
 |---|---|---|
 | Layer | 79.8 ms | 32.3 t/s |
@@ -129,6 +131,8 @@ repeat-penalty = 1.0
 
 **教训：** 务必使用你实际运行时的配置进行 Benchmark。单纯的 `llama-bench` 会误导你保留 Layer Split，实则会让你损失 1/3 的解码吞吐。
 
+坦白：我最初的 MTP 对比忘了传 `-sm`，实际上是 layer 和它自己比，然后“验证”了 layer。传对参数，看日志，如果两个配置给出完全相同的数字，先怀疑你的测试脚本，再怀疑硬件。
+
 ## 发现 2：硬件支持 P2P，但对当前 AllReduce 无效
 
 硬件端支持 P2P：`amdgpu.pcie_p2p=Y`，`hipDeviceCanAccessPeer` 双向返回 1。实测 Peer 直接拷贝约 27 GB/s，而经过 Host 中转约 14 GB/s。
@@ -136,11 +140,14 @@ repeat-penalty = 1.0
 然而，llama.cpp 内置的双 GPU AllReduce 仍通过 Pinned Host Memory 中转。日志明确显示：
 `ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU`
 
-`GGML_CUDA_P2P=1` 仅开启了 Peer 权限，并没改变这一路径。实测开启 P2P 时为 59.8 ms/Forward，关闭时为 60.1 ms。纯属噪声。
+`GGML_CUDA_P2P=1` 仅开启了 Peer 权限，并没改变这一路径。实测开启 P2P 时为 59.8 ms/Forward，关闭时为 60.1 ms。纯属噪声。RCCL 也会自己选择传输方式，在那里关掉 P2P 数字也几乎不变。
+
+如果你用 RCCL 编译，那就做 `iommu=pt` 这一步。否则 P2P 这个设置可以完全忽略。
 
 ## 发现 3：RCCL 显著提升 Prefill，但必须配合 `NCCL_PROTO=Simple`
 
 在 Tensor Split + MTP 模式下，针对 ~35.6k token 的 Prompt：
+
 | AllReduce 类型 | Prefill 速度 | 每次 Forward 耗时 |
 |---|---|---|
 | 内部（Host 中转） | 1088 t/s | 59.0 ms |
@@ -149,9 +156,12 @@ repeat-penalty = 1.0
 
 RCCL 提供了约 33% 的 Prefill 收益，但默认协议会让解码变慢 10%。使用 `Simple` 协议可以保留 Prefill 收益并消除解码惩罚。强行使用 `LL` 协议会导致 Prefill 崩溃（降至 641 t/s），切勿尝试。
 
+我也扫了显式列表（`Simple`、`LL128`、`Simple,LL128`、`Simple,LL,LL128`）。只要列表里包含 `Simple` 或 `LL128`，它们彼此之间都在约 1 ms 以内。选 `Simple` 就行。
+
 ## 发现 4：`-ub 1024` 是“免费”的 Prefill 收益
 
 针对 72k 上下文（两次运行）：
+
 | ubatch | Prefill 速度 |
 |---|---|
 | 512 | 1331 / 1375 t/s |
@@ -162,6 +172,7 @@ RCCL 提供了约 33% 的 Prefill 收益，但默认协议会让解码变慢 10%
 ## 发现 5：此场景下不要量化 KV Cache
 
 在 RCCL + `Simple` 模式下（72k 上下文）：
+
 | KV 类型 | 每次 Forward 耗时 |
 |---|---|
 | f16 | 63.2 ms |
@@ -173,6 +184,7 @@ KV Cache 占用巨大（约 18 GB）。虽然想通过量化节省空间，但�
 ## 发现 6：`spec-draft-n-max` 取决于负载类型
 
 Tensor Split 模式，生成 384 token：
+
 | `n-max` | 散文速度 | 散文接受率 | 代码速度 | 代码接受率 |
 |---|---|---|---|---|
 | 2 | 44.0 t/s | 59.0% | 50.0 t/s | 74.8% |
@@ -193,15 +205,17 @@ Tensor Split 模式，生成 384 token：
 - **MTP 变动性：** 接受率随内容剧烈变动，因此 tokens/s 不是稳定的衡量标准。
 - **量化差异：** 此测试基于 Q8 量化。Q4 量化虽然解码速度可能翻倍（受限于内存带宽），但会伴随明显的质量损失。
 
+如果你复现了这些测试但数字不同，我很想听听。
+
 ---
 
-### 关键数据校验核对表
+### 关键数据清单
 - **硬件：** 2x Radeon AI PRO R9700 (gfx1201)
 - **模型：** Qwen3.8-27B-GGUF (UD-Q8_K_XL)
 - **内核参数：** `amd_iommu=on iommu=pt`
 - **编译参数：** `GGML_HIP=ON`, `GGML_HIP_RCCL=ON`, `AMDGPU_TARGETS=gfx1201`
 - **核心优化：** `NCCL_PROTO=Simple`, `GGML_CUDA_ALLREDUCE=nccl`
 - **MTP 配置：** `spec-type=draft-mtp`, `spec-draft-n-max=3`
-- **Tensor Split：** `tensor-split=1,1`
+- **Tensor Split：** `split-mode=tensor`, `tensor-split=1,1`
 - **KV 状态：** 保持 f16（不进行 KV 量化）
 - **测得性能：** Prefill ~1450 t/s | 解码 ~45-60 t/s (视内容而定)

@@ -9,7 +9,7 @@ author: Qing Gu
 summary: Best-practice config plus measured evidence for running Qwen3.8-27B UD-Q8_K_XL on two Radeon AI PRO R9700 with llama.cpp and ROCm.
 ---
 
-> Languages: [English](/blog/2026/09/22/qwen3-8-27b-dual-r9700/) | [Francais](/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/) | [中文](/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/)
+> Languages: [English](/blog/2026/09/22/qwen3-8-27b-dual-r9700/) | [Français](/blog/2026/09/22/qwen3-8-27b-dual-r9700-fr/) | [中文](/blog/2026/09/22/qwen3-8-27b-dual-r9700-cn/)
 
 **Note:** The following data points are derived solely from my personal test environment and do not represent universal conclusions. This post shares the optimal configurations I've measured, along with the technical evidence supporting each choice. If you are planning to run the same model on similar hardware, this guide should save you significant trial-and-error time.
 
@@ -25,7 +25,7 @@ summary: Best-practice config plus measured evidence for running Qwen3.8-27B UD-
 - **Inference Framework:** llama.cpp at `709fe755d` (build 11116)
 
 **Target Model:** `unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL`, size 29.3 GiB.
-**Metadata:** 64 layers, `n_head=24`, `n_head_kv=4`, head dim 256, `n_ctx_train=262144`. The model supports no sliding window and includes an MTP head (`nextn_predict_layers=1`), which makes speculative decoding highly efficient here.
+**Metadata:** 64 layers, `n_head=24`, `n_head_kv=4`, head dim 256, `n_ctx_train=262144`. The model has no sliding window and includes an MTP head (`nextn_predict_layers=1`), which makes speculative decoding highly efficient here.
 
 ## 1. Kernel: IOMMU Passthrough
 
@@ -74,7 +74,7 @@ The same can be achieved via `config.ini` in router/preset mode:
 host = 0.0.0.0
 port = 8080
 
-+[qwen3-27b]
+[qwen3-27b]
 hf = unsloth/Qwen3.8-27B-GGUF:UD-Q8_K_XL
 ngl = 99
 flash-attn = true
@@ -108,18 +108,20 @@ On this machine, for a ~72k-token prompt:
 ## Methodology
 
 - **Metric of Record:** **Milliseconds per Target Forward**, where `forwards = predicted_tokens - accepted_draft_tokens`. Plain tokens/second is contaminated by MTP acceptance variance. Milliseconds per forward provides a cleaner picture of hardware capability.
-- **Statistical Principle:** Data represents single runs. Differences under 5% are treated as environmental noise.
+- **Statistical Principle:** The data comes from single runs. Differences under 5% are treated as environmental noise.
 - **Consistency:** All tests used `-fa on`, tensor split, and MTP `n-max=3` on the aforementioned model.
 
 ## Finding 1: Tensor Split Beats Layer Split with MTP
 
 Raw `llama-bench` (no speculative decoding) results:
+
 | Split Mode | tg128 Speed |
 |---|---|
 | Layer | 17.96 t/s |
 | Tensor | 16.89 t/s |
 
 With MTP (same prompt, 9-token start, 256 generated):
+
 | Split Mode | ms per Target Forward | Generation Speed (tg) |
 |---|---|---|
 | Layer | 79.8 ms | 32.3 t/s |
@@ -129,6 +131,8 @@ With MTP (same prompt, 9-token start, 256 generated):
 
 **Lesson:** Always benchmark using the exact runtime configuration you intend to use. A naive `llama-bench` would incorrectly suggest keeping Layer Split, which would cost you a third of your decode throughput.
 
+A confession: my first MTP comparison forgot to pass `-sm`, so it compared layer to itself and "confirmed" layer. Pass the flags, check the log, and if two configs produce identical numbers, suspect your harness before you suspect the hardware.
+
 ## Finding 2: Hardware Supports P2P, but it's Irrelevant to this AllReduce
 
 The hardware supports it: `amdgpu.pcie_p2p=Y`, `hipDeviceCanAccessPeer` returns 1 both ways. Direct peer copy measures ~27 GB/s versus ~14 GB/s for host-staged copy.
@@ -136,11 +140,14 @@ The hardware supports it: `amdgpu.pcie_p2p=Y`, `hipDeviceCanAccessPeer` returns 
 However, the built-in 2-GPU AllReduce in llama.cpp stages through Pinned Host Memory. The log confirms this:
 `ggml_cuda_ar_pipeline_init: initialized AllReduce pipeline: 2 GPUs, 1024 KB chunked kernel staging + 32 MB copy-engine staging per GPU`
 
-`GGML_CUDA_P2P=1` enables the permission but does not alter the path. Measured with tensor split + MTP: 59.8 ms per forward with P2P on, 60.1 ms with it off. Pure noise.
+`GGML_CUDA_P2P=1` enables peer access but does not alter the path. Measured with tensor split + MTP: 59.8 ms per forward with P2P on, 60.1 ms with it off. Pure noise. RCCL also picks its own transport, and disabling P2P there barely moves the numbers either.
+
+If you build with RCCL, do the `iommu=pt` change. Otherwise P2P is a setting you can ignore.
 
 ## Finding 3: RCCL Boosts Prefill, but Requires `NCCL_PROTO=Simple`
 
 In Tensor Split + MTP mode, for a ~35.6k-token prompt:
+
 | AllReduce Type | Prefill Speed | ms per Target Forward |
 |---|---|---|
 | Internal (Host-staged) | 1088 t/s | 59.0 ms |
@@ -149,9 +156,12 @@ In Tensor Split + MTP mode, for a ~35.6k-token prompt:
 
 RCCL provides a ~33% prefill boost, but its default protocol selection costs about 10% on decode. Using `Simple` preserves the prefill gain while removing the decode penalty. Forcing `LL` alone is disastrous for prefill (drops to 641 t/s); avoid this.
 
+I also swept the explicit lists (`Simple`, `LL128`, `Simple,LL128`, `Simple,LL,LL128`). Once the list contains `Simple` or `LL128`, they are all within ~1 ms of each other. Pick `Simple` and move on.
+
 ## Finding 4: `-ub 1024` is a "Free" Prefill Gain
 
 At 72k context (two runs each):
+
 | ubatch | Prefill Speed |
 |---|---|
 | 512 | 1331 / 1375 t/s |
@@ -162,6 +172,7 @@ About +8% gain, while decode speed remains unchanged. `-b 2048` remains optimal.
 ## Finding 5: Do Not Quantize the KV Cache here
 
 At 72k context with RCCL + `Simple`:
+
 | KV Type | ms per Target Forward |
 |---|---|
 | f16 | 63.2 ms |
@@ -173,6 +184,7 @@ The KV cache is substantial (~18 GB). While it is tempting to shrink it, the deq
 ## Finding 6: `spec-draft-n-max` is Workload-Dependent
 
 Tensor Split mode, 384 tokens generated:
+
 | `n-max` | Prose Speed | Prose Accept | Code Speed | Code Accept |
 |---|---|---|---|---|
 | 2 | 44.0 t/s | 59.0% | 50.0 t/s | 74.8% |
@@ -193,6 +205,8 @@ Each extra draft token costs ~5 ms per forward. This only pays off if the draft 
 - **MTP Variability:** Acceptance rates fluctuate with content, so tokens/second is not a stable metric.
 - **Quantization Differences:** This test used Q8. A Q4 quant of the same model might decode roughly twice as fast (as it's memory-bandwidth bound), but at a noticeable quality cost.
 
+If you reproduce this and get different numbers, I would like to hear about it.
+
 ---
 
 ### Key Data Checklist
@@ -202,6 +216,6 @@ Each extra draft token costs ~5 ms per forward. This only pays off if the draft 
 - **Build Params:** `GGML_HIP=ON`, `GGML_HIP_RCCL=ON`, `AMDGPU_TARGETS=gfx1201`
 - **Core Optimizations:** `NCCL_PROTO=Simple`, `GGML_CUDA_ALLREDUCE=nccl`
 - **MTP Config:** `spec-type=draft-mtp`, `spec-draft-n-max=3`
-- **Tensor Split:** `tensor-split=1,1`
+- **Tensor Split:** `split-mode=tensor`, `tensor-split=1,1`
 - **KV State:** Keep f16 (No KV quantization)
 - **Measured Performance:** Prefill ~1450 t/s | Decode ~45-60 t/s (content dependent)
