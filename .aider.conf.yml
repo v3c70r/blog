@@ -1,0 +1,4 @@
+# Aider configuration for the blog repo.
+# The canonical agent guide is AGENTS.md (CONVENTIONS.md is a symlink to it).
+read:
+  - AGENTS.md
